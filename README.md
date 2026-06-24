@@ -2,6 +2,9 @@
 
 > **OpenPTS** = **Open** **P**ower **T**rading **S**ystem —— 一个可二次开发的电力交易平台开源骨架。
 
+[![CI](https://github.com/XM-Vance/OpenPTS/actions/workflows/ci.yml/badge.svg)](https://github.com/XM-Vance/OpenPTS/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 一个可二次开发的**开放式电力交易系统脚手架**。基于成熟的生产架构（Go 网关 + Next.js + PostgreSQL），
 覆盖电力零售交易运营的核心业务域（客户、合同、结算、价格、负荷、文档解析等），
 **算法与预测能力留作接入点**，由二次开发者按自有策略实现。

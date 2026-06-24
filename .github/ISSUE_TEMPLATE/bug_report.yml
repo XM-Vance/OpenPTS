@@ -1,0 +1,71 @@
+name: 🐛 Bug 报告
+description: 报告一个可复现的问题，帮助改进 OpenPTS
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢报告 Bug！请尽量填写完整，便于快速定位。
+        如果是算法/预测相关的问题，请注意 OpenPTS 是骨架，相关端点默认返回 501，需自行接入算法。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 发生了什么？期望的行为又是什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 最小可复现步骤（接口调用 / 操作路径 / 代码片段）。
+      placeholder: |
+        1. 启动后端：...
+        2. 调用接口：curl ...
+        3. 看到 ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 影响模块
+      options:
+        - 后端 (Go 网关)
+        - 前端 (Next.js)
+        - 数据库 / 迁移
+        - 文档解析 (docling)
+        - 部署 / Docker
+        - 文档
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: OpenPTS 版本 / commit
+      placeholder: 如 main 分支 commit hash，或 tag
+    validations:
+      required: false
+
+  - type: textarea
+    id: env
+    attributes:
+      label: 运行环境
+      description: 操作系统、Go 版本、Node 版本、PostgreSQL 版本、浏览器等。
+      placeholder: "macOS 14 / Go 1.25 / Node 20 / PostgreSQL 16"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 报错信息
+      description: 相关的后端日志、浏览器控制台错误、HTTP 响应等（请贴文本，不要截图）。
+      render: shell
+    validations:
+      required: false
