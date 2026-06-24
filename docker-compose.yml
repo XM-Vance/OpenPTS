@@ -1,4 +1,4 @@
-# PTIS 生产级编排：Postgres 16 + Go 后端 + 文档解析服务 + Next.js 前端 + Nginx 反代。
+# OpenPTS 生产级编排：Postgres 16 + Go 后端 + 文档解析服务 + Next.js 前端 + Nginx 反代。
 #
 # 启动：    docker compose up -d --build
 #           （默认容器内多阶段构建，需能拉取 golang:1.25-alpine / node:20-alpine 基础镜像）

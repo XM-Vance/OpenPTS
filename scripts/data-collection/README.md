@@ -1,4 +1,4 @@
-# PTIS 数据采集模块 v3
+# OpenPTS 数据采集模块 v3
 
 每日自动采集三类市场参考数据，**直写 PostgreSQL** `md_*` 表，无需 MySQL 中间层。
 

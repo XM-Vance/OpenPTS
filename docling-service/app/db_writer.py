@@ -1,6 +1,6 @@
 """
 数据库写入器
-解析结果写入 PTIS PostgreSQL 数据库
+解析结果写入 OpenPTS PostgreSQL 数据库
 """
 
 import json, logging
@@ -13,7 +13,7 @@ from psycopg2 import pool as pgpool
 
 logger = logging.getLogger("docling-service.db_writer")
 
-# PTIS PG 连接配置（密码仅从环境变量读取，仓库不留真实凭证）
+# OpenPTS PG 连接配置（密码仅从环境变量读取，仓库不留真实凭证）
 import os
 PG_HOST = os.getenv("PG_HOST", "localhost")
 PG_PORT = os.getenv("PG_PORT", "5432")

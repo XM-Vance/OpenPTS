@@ -4,10 +4,10 @@
 # 不要在别处复制本文件（曾有 backend/docs/openapi.yaml 拷贝，已于 2026-06 删除）。
 openapi: 3.1.0
 info:
-  title: PTIS 网关 API
+  title: OpenPTS 网关 API
   version: '1.0'
   description: |
-    电力交易信息系统网关接口。
+    OpenPTS（开放式电力交易系统）网关接口。
     所有 `/api/v1/*` 端点除 `/auth/login` 外均需 Bearer JWT 鉴权；
     业务写操作另外受 RBAC 权限码控制（如 `customer_management:write`）。
 

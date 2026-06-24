@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PTIS V1 数据迁移脚本：MySQL (atr_ele/forecast_data/fujian_biz) → PostgreSQL (ptis)
+OpenPTS V1 数据迁移脚本：MySQL (atr_ele/forecast_data/fujian_biz) → PostgreSQL (ptis)
 
 依赖安装：
     pip install -r scripts/requirements.txt
@@ -495,7 +495,7 @@ def step_companies() -> dict:
 # 主入口
 # ═══════════════════════════════════════════════════════════════
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="PTIS V1 MySQL → PostgreSQL 数据迁移")
+    parser = argparse.ArgumentParser(description="OpenPTS V1 MySQL → PostgreSQL 数据迁移")
     parser.add_argument("--dry-run", action="store_true", help="只统计不写入")
     parser.add_argument("--only", type=str, default=None, help="只跑指定步骤（步骤名，如 '日前价格'）")
     parser.add_argument("--strict", action="store_true", help="任何关键步骤失败则非零退出")
@@ -521,7 +521,7 @@ if __name__ == "__main__":
             sys.exit(1)
 
     print("=" * 60)
-    print(f"PTIS V1 数据迁移开始: {datetime.now()}")
+    print(f"OpenPTS V1 数据迁移开始: {datetime.now()}")
     if DRY_RUN:
         print("  *** DRY-RUN 模式: 只统计不写入 ***")
     if args.only:

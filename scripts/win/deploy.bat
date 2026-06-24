@@ -3,7 +3,7 @@ chcp 65001 >nul 2>&1
 setlocal EnableDelayedExpansion
 
 :: =============================================================
-:: PTIS Windows 11 一键部署脚本
+:: OpenPTS Windows 11 一键部署脚本
 :: 前置：Docker Desktop 已安装并运行
 :: 用法：
 ::   deploy.bat          首次部署（构建+启动）
@@ -15,7 +15,7 @@ setlocal EnableDelayedExpansion
 ::   deploy.bat reset    重置（删数据，慎用）
 :: =============================================================
 
-title PTIS 部署工具
+title OpenPTS 部署工具
 
 :: 项目目录（脚本在 scripts/win/ 下，需回到项目根）
 set "PROJECT_DIR=%~dp0..\.."
@@ -31,7 +31,7 @@ set "RESET=%ESC%[0m"
 
 echo.
 echo =========================================
-echo   PTIS 电力交易辅助决策系统
+echo   OpenPTS 开放式电力交易系统
 echo   Windows 部署工具 v1.0
 echo =========================================
 echo.

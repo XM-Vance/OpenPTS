@@ -57,7 +57,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl">{t('login.title')}</CardTitle>
-          <CardDescription>电力交易信息系统</CardDescription>
+          <CardDescription>OpenPTS · 开放式电力交易系统</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

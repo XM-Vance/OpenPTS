@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PTIS 安全打包脚本 — 排除所有敏感文件
+# OpenPTS 安全打包脚本 — 排除所有敏感文件
 # 用法: bash scripts/make_release.sh [输出文件名]
 set -euo pipefail
 

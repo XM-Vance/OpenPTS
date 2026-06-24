@@ -3,8 +3,8 @@ import { Providers } from '@/lib/providers';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: '电力交易信息系统',
-  description: 'PTIS 电力交易信息系统',
+  title: 'OpenPTS · 开放式电力交易系统',
+  description: 'OpenPTS — 开放式电力交易系统',
 };
 
 export default function RootLayout({

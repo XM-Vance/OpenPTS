@@ -1,4 +1,4 @@
-# PTIS 交付脚本：一键起栈 / 迁移 / 种子 / 测试 / 截图归档。
+# OpenPTS 交付脚本：一键起栈 / 迁移 / 种子 / 测试 / 截图归档。
 # 用法：make help
 #
 # 依赖：docker compose / migrate (golang-migrate) / curl / jq（可选）

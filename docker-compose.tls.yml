@@ -1,4 +1,4 @@
-# PTIS TLS 覆盖层：用 Caddy 替代 nginx，启用自动 HTTPS。
+# OpenPTS TLS 覆盖层：用 Caddy 替代 nginx，启用自动 HTTPS。
 # 用法：docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
 #
 # 必要环境变量（写到 .env）：

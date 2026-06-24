@@ -373,7 +373,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold">仪表盘</h1>
           <p className="text-sm text-muted-foreground">
-            电力交易信息系统 — 核心业务数据概览
+            OpenPTS · 开放式电力交易系统 — 核心业务数据概览
           </p>
         </div>
         <div className="flex items-center gap-2">

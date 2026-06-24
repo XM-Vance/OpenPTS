@@ -1,6 +1,6 @@
 # docling-service — 文档智能解析微服务
 
-上传文档 → 转图 → 智谱 GLM 视觉 OCR → 结构化抽取(分类/实体/表格)→ 写入 PTIS Postgres。
+上传文档 → 转图 → 智谱 GLM 视觉 OCR → 结构化抽取(分类/实体/表格)→ 写入 OpenPTS Postgres。
 独立的旁路微服务,FastAPI,监听 **8300**。
 
 ## 引擎
@@ -27,7 +27,7 @@
 | `ZHIPU_API_KEY` | ✅ | (空) | 智谱开放平台密钥。**仅经环境变量注入,代码/仓库不留真实值。** |
 | `ZHIPU_BASE_URL` | | `https://open.bigmodel.cn/api/paas/v4` | |
 | `ZHIPU_VISION_MODEL` | | `glm-4v-flash` | 视觉模型 |
-| `PG_HOST`/`PG_PORT`/`PG_DB`/`PG_USER`/`PG_PASSWORD` | ✅(密码) | localhost/5432/ptis/ptis/(空) | 复用 PTIS 主库;写入自有表 `docling_documents`(启动时 `CREATE TABLE IF NOT EXISTS` 自动建) |
+| `PG_HOST`/`PG_PORT`/`PG_DB`/`PG_USER`/`PG_PASSWORD` | ✅(密码) | localhost/5432/ptis/ptis/(空) | 复用 OpenPTS 主库;写入自有表 `docling_documents`(启动时 `CREATE TABLE IF NOT EXISTS` 自动建) |
 
 ## 数据表
 

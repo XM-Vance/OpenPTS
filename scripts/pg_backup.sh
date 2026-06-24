@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# PTIS V1 — PostgreSQL 备份脚本
+# OpenPTS V1 — PostgreSQL 备份脚本
 #
 # 功能：
 #   - pg_dump 全量导出，gzip 压缩

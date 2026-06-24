@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PTIS 端到端验证脚本：登录 → 调用 15+ 关键端点 → 输出 OK/FAIL。
+# OpenPTS 端到端验证脚本：登录 → 调用 15+ 关键端点 → 输出 OK/FAIL。
 # 用法：bash scripts/verify.sh
 # 环境变量：BASE_URL（默认 http://localhost:8080）、ADMIN_USER / ADMIN_PASS
 

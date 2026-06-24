@@ -1,4 +1,4 @@
-# PTIS Caddy 配置（替代 nginx 的 HTTPS 自动方案）。
+# OpenPTS Caddy 配置（替代 nginx 的 HTTPS 自动方案）。
 # 用法：
 #   1) 在 .env 设置 PTIS_DOMAIN=ptis.example.com 与 ACME_EMAIL=ops@example.com
 #   2) docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d

@@ -11,7 +11,7 @@ export const LOCALES: { code: Locale; label: string; flag: string }[] = [
 type Messages = Record<string, string>;
 
 const zh: Messages = {
-  'app.title': '电力交易信息系统',
+  'app.title': 'OpenPTS · 开放式电力交易系统',
   'nav.home': '主页',
   'nav.system': '系统',
   'nav.business': '业务',

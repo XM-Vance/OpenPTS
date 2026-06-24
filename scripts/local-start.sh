@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# PTIS V1 本地原生启动脚本（不用 Docker）
+# OpenPTS V1 本地原生启动脚本（不用 Docker）
 # 前置：brew PostgreSQL@16 已启动
 # 用法：
 #   bash scripts/local-start.sh        启动
@@ -32,7 +32,7 @@ stop_service() {
 case "${1:-start}" in
     start)
         echo "========================================="
-        echo "  PTIS V1 原生启动"
+        echo "  OpenPTS V1 原生启动"
         echo "========================================="
 
         # 清理残留进程
@@ -96,7 +96,7 @@ case "${1:-start}" in
         ;;
 
     stop)
-        echo "停止 PTIS V1 ..."
+        echo "停止 OpenPTS V1 ..."
         stop_service frontend
         stop_service algo
         stop_service backend

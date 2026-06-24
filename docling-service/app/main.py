@@ -1,5 +1,5 @@
 """
-PTIS Docling Service — 文档智能解析微服务
+OpenPTS Docling Service — 文档智能解析微服务
 上传文件 → GLM视觉OCR → 提取结构化数据 → 写入PTIS数据库
 核心引擎：PyMuPDF + 智谱GLM视觉API（替代Docling）
 """
@@ -73,7 +73,7 @@ def _build_package_info(entities: dict, doc_type: str) -> dict | None:
 
     return pkg if pkg else None
 
-app = FastAPI(title="PTIS Document OCR Service", version="2.0.0")
+app = FastAPI(title="OpenPTS Document OCR Service", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
