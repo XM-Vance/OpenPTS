@@ -71,13 +71,13 @@ func (r *StorageDeclarationRepository) List(ctx context.Context, stationID strin
 }
 
 func (r *StorageDeclarationRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用 FJ
+	// 确定 org_id：scoped 用活跃省，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
 		if err := r.pool.QueryRow(ctx,
-			"SELECT id FROM organizations WHERE code='FJ'").Scan(&orgID); err != nil {
-			return 0, fmt.Errorf("resolve FJ org: %w", err)
+			"SELECT id FROM organizations WHERE code='default'").Scan(&orgID); err != nil {
+			return 0, fmt.Errorf("resolve default org: %w", err)
 		}
 	}
 	rows, err := r.pool.Query(ctx, `SELECT id, max_power_mw::float8 FROM storage_stations WHERE status = 'active' AND org_id = $1::uuid`, orgID)

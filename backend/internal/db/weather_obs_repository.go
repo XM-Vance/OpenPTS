@@ -132,22 +132,23 @@ func (r *WeatherRepository) HydrologyDaily(ctx context.Context, station string, 
 }
 
 // obsWindStations / obsHydroStations 演示站点（含经纬度）。
+// 二次开发时替换为你自己的监测站点。
 var obsWindStations = []struct {
 	Code, Name string
 	Lat, Lon   float64
 }{
-	{"WF_PHW", "平海湾风电场", 25.17, 119.10},
-	{"WF_XP", "霞浦海上风电", 26.88, 120.00},
-	{"WF_PT", "莆田南日岛风电", 25.24, 119.42},
+	{"WF_01", "示例风电场A", 31.20, 121.40},
+	{"WF_02", "示例风电场B", 31.10, 121.50},
+	{"WF_03", "示例风电场C", 31.30, 121.30},
 }
 
 var obsHydroStations = []struct {
 	Code, Name string
 	Lat, Lon   float64
 }{
-	{"RV_SK", "水口水库", 26.50, 118.80},
-	{"RV_AX", "安溪水文站", 25.06, 118.19},
-	{"RV_JX", "棉花滩水库", 25.10, 116.40},
+	{"RV_01", "示例水库", 31.25, 121.45},
+	{"RV_02", "示例水文站", 31.15, 121.55},
+	{"RV_03", "示例水文站B", 31.35, 121.35},
 }
 
 // GenerateObsDemo 为风电场风速（近 7 天逐时）与水库水文（近 30 天逐日）生成演示观测数据。

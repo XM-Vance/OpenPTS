@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS role_menu_pages (
 INSERT INTO menu_pages (code, label, href, icon, sort_order, group_name, is_required) VALUES
 -- 主页
 ('page:dashboard',       '仪表盘',     '/dashboard',            'LayoutDashboard',  1,  '主页',     TRUE),
-('page:display-screen',  '展示大屏',   '/display-screen',       'Monitor',         2,  '主页',     FALSE),
 -- 客户管理
 ('page:customers',       '客户档案',   '/customers',            'Building2',       10, '客户管理', FALSE),
 ('page:intent-customers','意向客户',   '/intent-customers',     'UserPlus',        11, '客户管理', FALSE),
@@ -119,7 +118,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO role_menu_pages (role_code, page_code)
 SELECT 'analyst', code FROM menu_pages
 WHERE code IN (
-    'page:dashboard', 'page:display-screen', 'page:settings',
+    'page:dashboard', 'page:settings',
     'page:customers', 'page:intent-customers',
     'page:analytics-features', 'page:analytics-cluster', 'page:analytics-load', 'page:analytics-profit',
     'page:documents',
@@ -143,7 +142,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO role_menu_pages (role_code, page_code)
 SELECT 'viewer', code FROM menu_pages
 WHERE code IN (
-    'page:dashboard', 'page:display-screen', 'page:settings',
+    'page:dashboard', 'page:settings',
     'page:customers', 'page:intent-customers',
     'page:documents',
     'page:load-forecast', 'page:load-total', 'page:weather',

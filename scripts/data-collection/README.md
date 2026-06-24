@@ -51,9 +51,8 @@ python scripts/data-collection/fetch_market_data.py fx           # 仅汇率/指
 python scripts/data-collection/fetch_market_data.py rate         # 仅利率
 
 # 天气
-python scripts/data-collection/fetch_weather_data.py             # 全部省份
-python scripts/data-collection/fetch_weather_data.py fujian      # 仅福建
-python scripts/data-collection/fetch_weather_data.py anhui       # 仅安徽
+python scripts/data-collection/fetch_weather_data.py             # 全部区域
+python scripts/data-collection/fetch_weather_data.py example     # 仅指定区域
 ```
 
 ## 定时调度

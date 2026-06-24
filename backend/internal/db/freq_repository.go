@@ -88,7 +88,7 @@ func (r *FreqRepository) ListDailySummary(ctx context.Context, limit int) ([]*Fr
 	return list, rows.Err()
 }
 
-// resolveOrgID 返回活跃省 org_id；scoped=false 时回退到 FJ。
+// resolveOrgID 返回活跃组织 org_id；scoped=false 时回退到默认组织。
 func (r *FreqRepository) resolveOrgID(ctx context.Context) (string, error) {
 	org, scoped := OrgFilter(ctx)
 	if scoped {
@@ -96,8 +96,8 @@ func (r *FreqRepository) resolveOrgID(ctx context.Context) (string, error) {
 	}
 	var id string
 	if err := r.pool.QueryRow(ctx,
-		"SELECT id FROM organizations WHERE code='FJ'").Scan(&id); err != nil {
-		return "", fmt.Errorf("resolve FJ org: %w", err)
+		"SELECT id FROM organizations WHERE code='default'").Scan(&id); err != nil {
+		return "", fmt.Errorf("resolve default org: %w", err)
 	}
 	return id, nil
 }

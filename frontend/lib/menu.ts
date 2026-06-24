@@ -2,7 +2,6 @@ import {
   FileScan,
   LayoutDashboard,
   LayoutGrid,
-  Monitor,
   Users,
   Settings,
   Building2,
@@ -69,13 +68,12 @@ export interface MenuGroup {
 }
 
 // 前端固定菜单。每项绑定权限码，无权限的项自动隐藏。
-// 按模块关联性重组：客户管理 → 零售管理 → 文档中心 → 福建管理 → 负荷/价格 → 交易 → 结算 → 算法 → 系统
+// 按模块关联性重组：客户管理 → 零售管理 → 文档中心 → 运营管理 → 负荷/价格 → 结算 → 系统
 export const MENU: MenuGroup[] = [
   {
     group: '主页',
     items: [
       { label: '仪表盘', href: '/dashboard', icon: LayoutDashboard },
-      { label: '展示大屏', href: '/display-screen', icon: Monitor },
     ],
   },
   {

@@ -52,13 +52,13 @@ func (r *TOURepository) List(ctx context.Context) ([]*TOURule, error) {
 }
 
 func (r *TOURepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用 FJ
+	// 确定 org_id：scoped 用活跃省，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
 		if err := r.pool.QueryRow(ctx,
-			"SELECT id FROM organizations WHERE code='FJ'").Scan(&orgID); err != nil {
-			return 0, fmt.Errorf("resolve FJ org: %w", err)
+			"SELECT id FROM organizations WHERE code='default'").Scan(&orgID); err != nil {
+			return 0, fmt.Errorf("resolve default org: %w", err)
 		}
 	}
 	// 构造 96 段标签：valley(0-8h) / shoulder(8-10, 12-14, 18-22) / peak(10-12, 14-18) / sharp(无)

@@ -110,7 +110,6 @@ func main() {
 	loadCharRepo := db.NewLoadCharacteristicsRepository(pool)
 	custAnalysisRepo := db.NewCustomerAnalysisRepository(pool)
 	tradeStrategyRepo := db.NewTradeStrategyRepository(pool)
-	displayScreenRepo := db.NewDisplayScreenRepository(pool)
 	solarRepo := db.NewSolarRepository(pool)
 	marketDataRepo := db.NewMarketDataRepository(pool)
 	daSimRepo := db.NewDASimulationRepository(pool)
@@ -240,7 +239,6 @@ func main() {
 		LoadCharRepo:         loadCharRepo,
 		CustAnalysisRepo:     custAnalysisRepo,
 		TradeStrategyRepo:    tradeStrategyRepo,
-		DisplayScreenRepo:    displayScreenRepo,
 		ObjectStore:          objStore,
 		PermSvc:              permSvc,
 		Docling:              docling.New(cfg.DoclingServiceURL),

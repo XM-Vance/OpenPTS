@@ -19,7 +19,6 @@ const LABEL_TO_KEY: Record<string, string> = {
   '业务': 'nav.business',
   // 主页
   '仪表盘': 'nav.dashboard',
-  '展示大屏': 'nav.displayScreen',
   // 系统
   '用户管理': 'nav.users',
   '角色管理': 'nav.roles',

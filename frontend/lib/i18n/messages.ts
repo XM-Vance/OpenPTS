@@ -65,7 +65,6 @@ const zh: Messages = {
   'severity.warn': '警告',
   'severity.critical': '严重',
   // ─── 系统菜单 ───
-  'nav.displayScreen': '展示大屏',
   'nav.intentCustomers': '意向客户',
   'nav.contractProgress': '合同进度',
   'nav.systemLoad': '系统总负荷',
@@ -140,7 +139,6 @@ const en: Messages = {
   'nav.analytics': 'Analytics',
   'nav.weather': 'Weather',
   // ─── 系统菜单 ───
-  'nav.displayScreen': '展示大屏',
   'nav.intentCustomers': '意向客户',
   'nav.contractProgress': '合同进度',
   'nav.systemLoad': '系统总负荷',

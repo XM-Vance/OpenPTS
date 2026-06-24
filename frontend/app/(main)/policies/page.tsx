@@ -86,7 +86,7 @@ export default function PoliciesPage() {
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1.5 md:col-span-2">
                 <Label htmlFor="p_title">政策标题 *</Label>
-                <Input id="p_title" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="如：福建电力市场化交易实施细则" />
+                <Input id="p_title" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="如：电力市场化交易实施细则" />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="p_no">文号</Label>

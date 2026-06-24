@@ -282,10 +282,10 @@ export default function TradeRulesPage() {
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold">
             <BookOpen className="h-6 w-6" />
-            福建交易规则
+            交易规则
           </h1>
           <p className="text-sm text-muted-foreground">
-            管理福建省电力交易结算、偏差考核、绿电等规则配置
+            管理电力交易结算、偏差考核、绿电等规则配置
           </p>
         </div>
         <div className="flex items-center gap-2">

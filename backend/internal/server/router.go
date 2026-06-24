@@ -78,7 +78,6 @@ type Deps struct {
 	LoadCharRepo        *db.LoadCharacteristicsRepository
 	CustAnalysisRepo    *db.CustomerAnalysisRepository
 	TradeStrategyRepo   *db.TradeStrategyRepository
-	DisplayScreenRepo   *db.DisplayScreenRepository
 	AgentRepo          *db.AgentRepository
 	BondRepo           *db.BondRepository
 	SolarRepo          *db.SolarRepository
@@ -187,7 +186,6 @@ func NewRouter(d *Deps) *gin.Engine {
 	loadCharH := handler.NewLoadCharacteristicsHandler(d.LoadCharRepo)
 	custAnalysisH := handler.NewCustomerAnalysisHandler(d.CustAnalysisRepo)
 	tradeStrategyH := handler.NewTradeStrategyHandler(d.TradeStrategyRepo)
-	displayScreenH := handler.NewDisplayScreenHandler(d.DisplayScreenRepo)
 	agentH := handler.NewAgentHandler(d.AgentRepo)
 	bondH := handler.NewBondHandler(d.BondRepo)
 	solarH := handler.NewSolarHandler(d.SolarRepo)
@@ -195,7 +193,7 @@ func NewRouter(d *Deps) *gin.Engine {
 	marketDataH := handler.NewMarketDataHandler(d.MarketDataRepo)
 	carbonH := handler.NewCarbonHandler(d.CarbonRepo)
 
-	// 模块关联增强：自定义字段 / 标签 / 福建规则 / 全局搜索 / 联动操作
+	// 模块关联增强：自定义字段 / 标签 / 交易规则 / 全局搜索 / 联动操作
 	customFieldH := handler.NewCustomFieldHandler(d.CustomFieldRepo)
 	tagH := handler.NewTagHandler(d.TagRepo)
 	tradeRuleH := handler.NewTradeRuleHandler(db.NewTradeRuleRepository(d.Pool))
@@ -620,11 +618,6 @@ func NewRouter(d *Deps) *gin.Engine {
 			authed.GET("/trade/strategies", reqPMRead, tradeStrategyH.List)
 			authed.POST("/trade/strategies", reqPMWrite, tradeStrategyH.Create)
 			authed.POST("/trade/strategies/demo-data", reqPMWrite, tradeStrategyH.GenerateDemoData)
-
-			// G11 大屏数据聚合（system:read）
-			authed.GET("/display/overview", reqSYRead, displayScreenH.Overview)
-			authed.GET("/display/trend", reqSYRead, displayScreenH.Trend)
-			authed.POST("/display/demo-data", reqSYRead, displayScreenH.GenerateDemoData)
 
 			// H1 代理商管理（沿用客户管理权限）
 			authed.GET("/agents", reqCMRead, agentH.List)
