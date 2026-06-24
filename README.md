@@ -159,6 +159,24 @@ npm run dev         # 开发模式 http://localhost:3000
 
 详见 [CONTRIBUTING.md](CONTRIBUTING.md)。克隆后建议先 `make hooks` 启用推送前自检。
 
+## Roadmap
+
+> 📌 想参与？标有 `good first issue` 的是适合新贡献者的入门任务，见 [Issues](https://github.com/XM-Vance/OpenPTS/issues)。
+
+- [x] 通用运营框架（鉴权/RBAC/多租户/审计）
+- [x] 核心业务域（客户/合同/结算/价格/负荷/文档解析）
+- [x] 一键 Demo（合成数据 + 合成预测）
+- [ ] **示例算法接入**：提供一个最简的预测算法 demo（移动平均/相似日），演示如何填入接入点
+- [ ] **多省规则模板**：提供 1-2 个省份的规则数据样例，演示如何适配本地市场
+- [ ] **API 文档站**：基于 OpenAPI 生成可交互的 API 文档（Swagger UI / Scalar）
+- [ ] **测试覆盖**：补充各业务 handler 的单元测试
+- [ ] **部署文档**：补充 K8s / 云厂商部署指南
+- [ ] **国际化**：英文界面支持
+
+## 为什么做这个项目？
+
+详见 [为什么做 OpenPTS](docs/why-openpts.md) —— 讲清电力交易运营系统的真实成本，以及一个开源骨架能帮你省下什么。
+
 ## License
 
 [MIT](LICENSE)
