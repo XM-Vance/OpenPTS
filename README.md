@@ -9,6 +9,38 @@
 覆盖电力零售交易运营的核心业务域（客户、合同、结算、价格、负荷、文档解析等），
 **算法与预测能力留作接入点**，由二次开发者按自有策略实现。
 
+## 🚀 快速体验（一键 Demo）
+
+> 只需本地有 PostgreSQL + Go + Node.js，一行命令拉起完整演示（含演示数据 + 合成预测）。
+
+```bash
+git clone https://github.com/XM-Vance/OpenPTS.git
+cd OpenPTS
+bash scripts/demo.sh        # 自动建库 → 迁移 → 建账号 → 注入演示数据 → 起前后端
+```
+
+启动后访问 **http://localhost:3000**，用 `admin / admin123` 登录即可体验。
+
+- 演示模式（`DEMO_MODE=true`）：预测端点返回合成数据，**开箱即可看到效果**（非真实算法）。
+- 停止：`bash scripts/demo.sh stop`　重置：`bash scripts/demo.sh reset`
+
+<details>
+<summary>📸 效果图（点击展开）</summary>
+
+| 登录 | 仪表盘 |
+|---|---|
+| ![登录](docs/screenshots/01-login.png) | ![仪表盘](docs/screenshots/02-dashboard.png) |
+
+| 客户管理 | 结算管理 |
+|---|---|
+| ![客户管理](docs/screenshots/03-customers.png) | ![结算管理](docs/screenshots/04-settlement.png) |
+
+| 交易规则 | 价格管理 |
+|---|---|
+| ![交易规则](docs/screenshots/05-trade-rules.png) | ![价格管理](docs/screenshots/06-price.png) |
+
+</details>
+
 ## 为什么是"骨架"？
 
 完整的电力交易平台 = **通用运营框架** + **算法/规则内核**。

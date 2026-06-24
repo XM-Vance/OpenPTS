@@ -15,11 +15,12 @@ import (
 )
 
 type LoadHandler struct {
-	repo *db.LoadRepository
+	repo     *db.LoadRepository
+	demoMode bool
 }
 
-func NewLoadHandler(repo *db.LoadRepository) *LoadHandler {
-	return &LoadHandler{repo: repo}
+func NewLoadHandler(repo *db.LoadRepository, demoMode bool) *LoadHandler {
+	return &LoadHandler{repo: repo, demoMode: demoMode}
 }
 
 // ─── 演示数据生成 ───
@@ -128,13 +129,53 @@ type algoForecastResponse struct {
 }
 
 // Forecast POST /api/v1/load/forecast
-// 短期负荷预测接口。本开源骨架不内置预测算法，返回 501。
+// 短期负荷预测接口。
+//
+// - DEMO_MODE=true（演示模式）：返回合成预测曲线，便于开箱体验，不代表真实算法效果。
+// - 默认（未接入算法）：返回 501，等待二次开发者接入自有预测服务。
 //
 // 接入指引（二次开发）：
 //   1. 用 h.repo.GetRecentCurves(ctx, customerID, targetDate, 30) 取历史 96 点曲线；
 //   2. 调用你自有的预测服务（相似日/时序/机器学习），返回 algoForecastResponse 结构；
 //   3. 将结果按下面的响应格式返回。请求/响应 DTO 已在本文件下方定义好。
 func (h *LoadHandler) Forecast(c *gin.Context) {
+	var req forecastRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+	targetDate, err := time.Parse("2006-01-02", req.TargetDate)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "target_date 格式应为 YYYY-MM-DD"})
+		return
+	}
+
+	// 演示模式：合成一条 96 点预测曲线（复用演示数据生成器）。
+	if h.demoMode {
+		curve, total := synthLoadCurve(targetDate)
+		peak, valley := curve[0], curve[0]
+		lower := make([]float64, len(curve))
+		upper := make([]float64, len(curve))
+		for i, v := range curve {
+			if v > peak {
+				peak = v
+			}
+			if v < valley {
+				valley = v
+			}
+			lower[i] = math.Round((v*0.92)*100) / 100
+			upper[i] = math.Round((v*1.08)*100) / 100
+		}
+		resp := algoForecastResponse{
+			Forecast: curve, Lower: lower, Upper: upper,
+			Total: total, Peak: math.Round(peak*100) / 100, Valley: math.Round(valley*100) / 100,
+			Method: "demo-synthetic", SampleDays: 0,
+			TargetWeekday: (int(targetDate.Weekday()) + 6) % 7,
+		}
+		c.JSON(http.StatusOK, gin.H{"target_date": req.TargetDate, "history_days": 0, "forecast": resp})
+		return
+	}
+
 	c.JSON(http.StatusNotImplemented, gin.H{
 		"error": "负荷预测算法未配置。本开源骨架仅提供数据接口与请求/响应契约，请接入你的预测服务后实现该端点。",
 	})

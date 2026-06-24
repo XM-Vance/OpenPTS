@@ -20,6 +20,7 @@ type Config struct {
 	DoclingServiceURL   string // 文档解析服务（docling）
 	JWTSecret           string
 	JWTTTL              time.Duration
+	DemoMode            bool // 演示模式：预测端点返回合成数据，便于开箱体验
 }
 
 // Load 解析环境变量。.env 不存在时不报错（容器场景由编排注入）。
@@ -34,6 +35,7 @@ func Load() (*Config, error) {
 		DatabaseReplicaURL: getEnv("DATABASE_REPLICA_URL", ""),
 		DoclingServiceURL: getEnv("DOCLING_SERVICE_URL", "http://localhost:8300"),
 		JWTSecret:      getEnv("JWT_SECRET", ""),
+		DemoMode:       getEnv("DEMO_MODE", "") == "true",
 	}
 
 	ttlHours, err := strconv.Atoi(getEnv("JWT_TTL_HOURS", "8"))

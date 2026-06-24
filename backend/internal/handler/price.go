@@ -16,11 +16,12 @@ import (
 const pricePoints = 48
 
 type PriceHandler struct {
-	repo *db.PriceRepository
+	repo     *db.PriceRepository
+	demoMode bool
 }
 
-func NewPriceHandler(repo *db.PriceRepository) *PriceHandler {
-	return &PriceHandler{repo: repo}
+func NewPriceHandler(repo *db.PriceRepository, demoMode bool) *PriceHandler {
+	return &PriceHandler{repo: repo, demoMode: demoMode}
 }
 
 // ─── 演示数据 ───
@@ -80,13 +81,56 @@ type priceForecastRequest struct {
 }
 
 // Forecast POST /api/v1/price/forecast
-// 日前价格预测接口。本开源骨架不内置预测算法，返回 501。
+// 日前价格预测接口。
+//
+// - DEMO_MODE=true（演示模式）：返回合成预测曲线，便于开箱体验，不代表真实算法效果。
+// - 默认（未接入算法）：返回 501，等待二次开发者接入自有预测服务。
 //
 // 接入指引（二次开发）：
 //   1. 用 h.repo.GetRecentDayAheadCurves(ctx, targetDate, 30) 取历史 48 点价格曲线；
 //   2. 调用你自有的预测服务（相似日加权/时序/机器学习），返回 algoForecastResponse 结构；
 //   3. 将结果按下面的响应格式返回。请求/响应 DTO 已在 load.go 中定义好。
 func (h *PriceHandler) Forecast(c *gin.Context) {
+	var req priceForecastRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+	targetDate, err := time.Parse("2006-01-02", req.TargetDate)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "target_date 格式应为 YYYY-MM-DD"})
+		return
+	}
+
+	// 演示模式：合成一条 48 点日前价预测曲线。
+	if h.demoMode {
+		curve := make([]float64, pricePoints)
+		var total, peak, valley float64
+		lower := make([]float64, pricePoints)
+		upper := make([]float64, pricePoints)
+		for p := 1; p <= pricePoints; p++ {
+			v := synthPriceValue(targetDate, p)
+			curve[p-1] = v
+			total += v
+			if p == 1 || v > peak {
+				peak = v
+			}
+			if p == 1 || v < valley {
+				valley = v
+			}
+			lower[p-1] = math.Round((v*0.93)*100) / 100
+			upper[p-1] = math.Round((v*1.07)*100) / 100
+		}
+		resp := algoForecastResponse{
+			Forecast: curve, Lower: lower, Upper: upper,
+			Total: math.Round(total/2*100) / 100, Peak: math.Round(peak*100) / 100, Valley: math.Round(valley*100) / 100,
+			Method: "demo-synthetic", SampleDays: 0,
+			TargetWeekday: (int(targetDate.Weekday()) + 6) % 7,
+		}
+		c.JSON(http.StatusOK, gin.H{"target_date": req.TargetDate, "history_days": 0, "forecast": resp})
+		return
+	}
+
 	c.JSON(http.StatusNotImplemented, gin.H{
 		"error": "价格预测算法未配置。本开源骨架仅提供数据接口与请求/响应契约，请接入你的预测服务后实现该端点。",
 	})
