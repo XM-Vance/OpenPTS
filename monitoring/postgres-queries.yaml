@@ -1,0 +1,88 @@
+# postgres-exporter 自定义查询：把业务级 KPI 直接进 Prometheus。
+# 挂载到 postgres-exporter --extend.query-path=/etc/exporter/queries.yaml
+# 抓取间隔同 prometheus scrape_interval（15s）。
+
+ptis_customers:
+  query: |
+    SELECT COUNT(*) AS total,
+           COUNT(*) FILTER (WHERE is_demo) AS demo,
+           COUNT(*) FILTER (WHERE NOT is_demo) AS real
+    FROM customers
+  metrics:
+    - total: { usage: GAUGE, description: "客户总数" }
+    - demo:  { usage: GAUGE, description: "演示客户数" }
+    - real:  { usage: GAUGE, description: "真实客户数" }
+
+ptis_contracts:
+  query: |
+    SELECT COUNT(*) FILTER (WHERE status = 'active')    AS active,
+           COUNT(*) FILTER (WHERE status = 'expired')   AS expired,
+           COUNT(*) FILTER (WHERE status = 'terminated') AS terminated
+    FROM retail_contracts
+  metrics:
+    - active:     { usage: GAUGE, description: "活跃合同数" }
+    - expired:    { usage: GAUGE, description: "到期合同数" }
+    - terminated: { usage: GAUGE, description: "终止合同数" }
+
+ptis_alerts:
+  query: |
+    SELECT
+      COUNT(*) FILTER (WHERE NOT acknowledged)                                AS pending,
+      COUNT(*) FILTER (WHERE NOT acknowledged AND severity = 'critical')     AS critical,
+      COUNT(*) FILTER (WHERE acknowledged)                                    AS acknowledged
+    FROM customer_anomaly_alerts
+  metrics:
+    - pending:      { usage: GAUGE, description: "未处理告警数" }
+    - critical:     { usage: GAUGE, description: "严重未处理告警数" }
+    - acknowledged: { usage: GAUGE, description: "已处理告警数" }
+
+ptis_approvals:
+  query: |
+    SELECT
+      COUNT(*) FILTER (WHERE status = 'pending')   AS pending,
+      COUNT(*) FILTER (WHERE status = 'approved')  AS approved,
+      COUNT(*) FILTER (WHERE status = 'rejected')  AS rejected
+    FROM approval_requests
+  metrics:
+    - pending:  { usage: GAUGE, description: "待审批数" }
+    - approved: { usage: GAUGE, description: "已通过累计" }
+    - rejected: { usage: GAUGE, description: "已驳回累计" }
+
+ptis_storage_revenue:
+  query: |
+    SELECT COALESCE(SUM(revenue), 0)::float8 AS revenue_30d
+    FROM storage_daily_operation
+    WHERE operation_date > now()::date - INTERVAL '30 days'
+  metrics:
+    - revenue_30d: { usage: GAUGE, description: "储能近 30 日累计收益（元）" }
+
+ptis_freq_revenue:
+  query: |
+    SELECT COALESCE(SUM(revenue), 0)::float8 AS revenue_7d
+    FROM frequency_regulation_clearing
+    WHERE settlement_date > now()::date - INTERVAL '7 days'
+  metrics:
+    - revenue_7d: { usage: GAUGE, description: "调频近 7 日累计收益（元）" }
+
+ptis_audit_writes:
+  query: |
+    SELECT
+      method,
+      COUNT(*)::float8 AS count
+    FROM audit_logs
+    WHERE created_at > now() - INTERVAL '1 hour'
+    GROUP BY method
+  metrics:
+    - count: { usage: GAUGE, description: "近 1 小时写操作次数（按 method）", labels: [method] }
+
+ptis_scheduled_jobs:
+  query: |
+    SELECT
+      COUNT(*) FILTER (WHERE enabled)                              AS enabled,
+      COUNT(*) FILTER (WHERE last_status = 'failed')               AS recent_failed,
+      COUNT(*)                                                     AS total
+    FROM scheduled_jobs
+  metrics:
+    - enabled:       { usage: GAUGE, description: "启用中的调度任务数" }
+    - recent_failed: { usage: GAUGE, description: "上次执行失败的任务数" }
+    - total:         { usage: GAUGE, description: "调度任务总数" }

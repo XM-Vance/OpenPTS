@@ -1,0 +1,428 @@
+# 本文件是 OpenAPI 规范的唯一来源（single source of truth）：
+#   - 后端经 go:embed 内嵌（docs.go），运行时由 /docs/openapi.yaml 提供
+#   - 前端 `npm run gen-api-types` 由此生成 lib/api/types.gen.ts
+# 不要在别处复制本文件（曾有 backend/docs/openapi.yaml 拷贝，已于 2026-06 删除）。
+openapi: 3.1.0
+info:
+  title: PTIS 网关 API
+  version: '1.0'
+  description: |
+    电力交易信息系统网关接口。
+    所有 `/api/v1/*` 端点除 `/auth/login` 外均需 Bearer JWT 鉴权；
+    业务写操作另外受 RBAC 权限码控制（如 `customer_management:write`）。
+
+servers:
+  - url: http://localhost:8080
+    description: 本地开发
+  - url: https://ptis.example.com
+    description: 生产（替换为实际域名）
+
+tags:
+  - name: 系统
+  - name: 认证
+  - name: 仪表盘
+  - name: 客户
+  - name: 零售
+  - name: 价格
+  - name: 结算
+  - name: 调度
+  - name: 审计
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string, example: '权限不足' }
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, example: admin }
+        password: { type: string, example: your_password }
+    LoginResponse:
+      # 登录态同时经 Set-Cookie(ptis_token, httpOnly)下发;body 中的 token 仅供脚本/工具。
+      type: object
+      required: [token, user_id, username]
+      properties:
+        token:    { type: string }
+        user_id:  { type: string, format: uuid }
+        username: { type: string }
+    DashboardSummary:
+      type: object
+      properties:
+        customer_count:       { type: integer }
+        active_contracts:     { type: integer }
+        active_packages:      { type: integer }
+        pending_alerts:       { type: integer }
+        critical_alerts:      { type: integer }
+        active_stations:      { type: integer }
+        storage_30d_revenue:  { type: number }
+        freq_7d_revenue:      { type: number }
+        latest_settlement_fee:
+          type: number
+          nullable: true
+    DailySeriesPoint:
+      type: object
+      properties:
+        date:  { type: string, format: date-time }
+        value: { type: number }
+    Customer:
+      type: object
+      # 与后端 db.Customer 结构对齐（customer_repository.go）。
+      required: [id, user_name, tags, is_demo, created_at, updated_at]
+      properties:
+        id:         { type: string, format: uuid }
+        user_name:  { type: string }
+        short_name: { type: string, nullable: true }
+        location:   { type: string, nullable: true }
+        source:     { type: string, nullable: true }
+        manager:    { type: string, nullable: true }
+        tags:       { type: array, items: { type: string } }
+        accounts:   { type: object, additionalProperties: true, nullable: true, description: "账户 JSON（自由结构）" }
+        is_demo:    { type: boolean }
+        extra:      { type: object, additionalProperties: true, nullable: true, description: "扩展字段 JSON" }
+        created_by: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        org_id:     { type: string, format: uuid, nullable: true, description: "归属省份（多租户）" }
+    ScheduledJob:
+      type: object
+      # 与后端调度任务结构对齐（scheduler.ts）。
+      required: [id, name, cron_expr, handler, enabled, created_at, updated_at]
+      properties:
+        id:          { type: string, format: uuid }
+        name:        { type: string }
+        description: { type: string, nullable: true }
+        cron_expr:   { type: string }
+        handler:     { type: string }
+        enabled:     { type: boolean }
+        last_run_at: { type: string, format: date-time, nullable: true }
+        last_status: { type: string, nullable: true }
+        last_error:  { type: string, nullable: true }
+        next_run_at: { type: string, format: date-time, nullable: true }
+        created_at:  { type: string, format: date-time }
+        updated_at:  { type: string, format: date-time }
+    AuditLog:
+      type: object
+      # 必填字段（中间件落库时一定有值）；其余可空。required 让生成的 TS 类型非可选，
+      # 前端可直接 a.method 访问而无需到处判空。
+      required: [id, method, path, status_code, duration_ms, created_at]
+      properties:
+        id:            { type: string, format: uuid }
+        user_id:       { type: string, format: uuid, nullable: true }
+        username:      { type: string, nullable: true }
+        method:        { type: string }
+        path:          { type: string }
+        resource:      { type: string, nullable: true }
+        resource_id:   { type: string, nullable: true }
+        status_code:   { type: integer }
+        ip:            { type: string, nullable: true }
+        user_agent:    { type: string, nullable: true }
+        duration_ms:   { type: integer }
+        error_message: { type: string, nullable: true }
+        created_at:    { type: string, format: date-time }
+
+security:
+  - BearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [系统]
+      summary: 健康检查
+      security: []
+      responses:
+        '200':
+          description: 健康
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+  /metrics:
+    get:
+      tags: [系统]
+      summary: Prometheus 指标
+      security: []
+      responses:
+        '200':
+          description: text/plain 指标输出
+          content:
+            text/plain: {}
+
+  /api/v1/auth/login:
+    post:
+      tags: [认证]
+      summary: 登录获取 JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: 登录成功
+          headers:
+            Set-Cookie:
+              description: 'ptis_token=<JWT>; HttpOnly; SameSite=Lax; Max-Age=<TTL>（Secure 在 HTTPS 下置位）'
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '401':
+          description: 用户名或密码错误
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [认证]
+      summary: 退出登录（清除登录 Cookie）
+      responses:
+        '200':
+          description: 已退出
+          headers:
+            Set-Cookie:
+              description: 'ptis_token=; Max-Age=0（清除）'
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: 已退出登录 }
+
+  /api/v1/auth/me:
+    get:
+      tags: [认证]
+      summary: 获取当前用户
+      responses:
+        '200': { description: 当前用户 }
+
+  /api/v1/dashboard/summary:
+    get:
+      tags: [仪表盘]
+      summary: 9 个 KPI 跨模块总览
+      responses:
+        '200':
+          description: 总览
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardSummary' }
+
+  /api/v1/dashboard/series/settlement:
+    get:
+      tags: [仪表盘]
+      summary: 最近 N 日批发结算总电费序列
+      parameters:
+        - in: query
+          name: days
+          schema: { type: integer, default: 14, minimum: 1, maximum: 90 }
+      responses:
+        '200':
+          description: 日序列
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/DailySeriesPoint' }
+
+  /api/v1/dashboard/series/freq:
+    get:
+      tags: [仪表盘]
+      summary: 最近 N 日调频收益序列
+      parameters:
+        - in: query
+          name: days
+          schema: { type: integer, default: 14 }
+      responses:
+        '200': { description: 日序列 }
+
+  /api/v1/customers:
+    get:
+      tags: [客户]
+      summary: 客户列表
+      parameters:
+        - in: query
+          name: keyword
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100, maximum: 500 }
+      responses:
+        '200':
+          description: 客户列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Customer' }
+    post:
+      tags: [客户]
+      summary: 新建客户（customer_management:write）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Customer' }
+      responses:
+        '201': { description: 已创建 }
+        '403': { description: 权限不足 }
+
+  /api/v1/customers/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [客户]
+      summary: 获取客户详情
+      responses: { '200': { description: 客户 } }
+    put:
+      tags: [客户]
+      summary: 更新客户（customer_management:write）
+      responses: { '200': { description: 已更新 } }
+    delete:
+      tags: [客户]
+      summary: 删除客户（customer_management:delete）
+      responses: { '200': { description: 已删除 } }
+
+  /api/v1/retail/contracts:
+    get:
+      tags: [零售]
+      summary: 零售合同列表
+      responses: { '200': { description: 合同列表 } }
+    post:
+      tags: [零售]
+      summary: 新建合同（retail_management:write）
+      responses: { '201': { description: 已创建 } }
+
+  /api/v1/price/trend/daily:
+    get:
+      tags: [价格]
+      summary: 现货日均价序列（含峰平谷）
+      parameters:
+        - in: query
+          name: days
+          schema: { type: integer, default: 30 }
+      responses: { '200': { description: 日序列 } }
+
+  /api/v1/settlement/daily:
+    get:
+      tags: [结算]
+      summary: 批发日结算列表
+      responses: { '200': { description: 日结算 } }
+
+  /api/v1/settlement/monthly:
+    get:
+      tags: [结算]
+      summary: 批发月度结算列表
+      responses: { '200': { description: 月度结算 } }
+
+  /api/v1/scheduler/jobs:
+    get:
+      tags: [调度]
+      summary: 调度任务列表（task_scheduler:read）
+      responses:
+        '200':
+          description: 任务列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScheduledJob' }
+
+  /api/v1/scheduler/runs:
+    get:
+      tags: [调度]
+      summary: 调度执行记录
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50 }
+      responses: { '200': { description: 执行记录 } }
+
+  /api/v1/scheduler/jobs/{id}/trigger:
+    post:
+      tags: [调度]
+      summary: 手工触发任务（task_scheduler:write）
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses: { '200': { description: 已触发 } }
+
+  /api/v1/scheduler/jobs/{id}/enabled:
+    put:
+      tags: [调度]
+      summary: 启用/禁用任务（task_scheduler:write）
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+      responses: { '200': { description: ok } }
+
+  /api/v1/audit/logs:
+    get:
+      tags: [审计]
+      summary: 操作审计列表（system:read）
+      parameters:
+        - in: query
+          name: username
+          schema: { type: string }
+        - in: query
+          name: method
+          schema: { type: string, enum: [POST, PUT, DELETE] }
+        - in: query
+          name: resource
+          schema: { type: string }
+        - in: query
+          name: days
+          schema: { type: integer, default: 7 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100, maximum: 500 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: 审计列表（分页，total 为同条件总行数）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuditLog' }
+                  total: { type: integer }

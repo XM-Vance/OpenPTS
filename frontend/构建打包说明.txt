@@ -1,0 +1,107 @@
+========================================
+  PTIS 前端构建与打包流程
+========================================
+
+【先读我】构建方式有两条路径，按环境选择：
+
+  A. 默认路径（推荐，可联网拉基础镜像）：
+     容器内多阶段构建，什么都不用预先编译。
+       cd <仓库根目录>
+       docker compose up -d --build
+     （frontend 服务默认使用 frontend/Dockerfile，
+       容器内自动 npm ci + next build）
+
+  B. 离线/内网路径（无法拉取 node 基础镜像）：
+     宿主机先构建，再用 Dockerfile.local 打薄镜像。
+     一键： make up-local        （仓库根目录，前后端一起）
+     仅前端：bash rebuild-frontend.sh  （本目录）
+     以下为路径 B 的手动步骤说明。
+
+一、宿主机构建 Next.js（路径 B）
+-----------------------
+cd <仓库根目录>/frontend
+
+# 安装依赖（首次或 package.json 变更后）
+npm install
+
+# 构建（standalone 模式，输出到 .next/standalone/）
+# 注意：不要设置 NEXT_PUBLIC_API_BASE 环境变量
+# 客户端走 Next.js rewrites 同源代理，不需要直连地址
+npm run build
+
+二、Docker 镜像打包（路径 B）
+-----------------------
+# 使用 Dockerfile.local（基于 alpine，不依赖外网拉 node 镜像）
+cd <仓库根目录>/frontend
+docker build -f Dockerfile.local -t ptis-frontend:latest .
+
+三、重建并启动容器（路径 B）
+-----------------------
+cd <仓库根目录>
+docker compose create frontend
+docker start ptis-frontend
+
+# 或走 compose 覆盖层一次到位：
+docker compose -f docker-compose.yml -f docker-compose.override.yml \
+  -f docker-compose.local-build.yml up -d --build frontend
+
+四、验证
+-----------------------
+# 检查容器状态
+docker ps --filter name=ptis-frontend
+
+# 检查页面可访问（经 nginx 反代；前端容器不再对外暴露 3000）
+curl -s -o /dev/null -w "%{http_code}" http://localhost/
+
+========================================
+  关键文件说明
+========================================
+
+frontend/Dockerfile
+  - 默认路径 A 用：node:20-alpine 三阶段构建
+  - 容器内 npm ci + next build，宿主机无需 Node 环境
+
+frontend/Dockerfile.local
+  - 离线路径 B 用：基于 alpine 镜像，安装 nodejs
+  - COPY 宿主机已构建好的 .next/standalone + static + public
+  - 不需要容器内 npm install / npm run build
+  - 构建快、不依赖外网
+
+frontend/.next/standalone/
+  - Next.js standalone 输出目录
+  - 包含最小 node_modules + server.js
+  - next.config.mjs 需设置 output: 'standalone'
+
+frontend/.next/static/
+  - JS/CSS 等静态资源
+  - 需单独 COPY 到容器内 .next/static/
+
+frontend/lib/api/client.ts
+  - axios baseURL 客户端留空（走 rewrites 同源代理）
+  - 服务端可通过 API_SERVER_BASE 环境变量直连后端
+
+frontend/next.config.mjs
+  - rewrites 默认指向 http://backend:8080（Docker 内部）
+  - 不要在 .env.local 里设 NEXT_PUBLIC_API_BASE
+
+docker-compose.yml / docker-compose.local-build.yml
+  - 默认 compose 用多阶段 Dockerfile（路径 A）
+  - 离线时叠加 -f docker-compose.local-build.yml 切到
+    Dockerfile.local（路径 B）
+
+========================================
+  注意事项
+========================================
+
+1. 不要创建 .env.local 文件设置 NEXT_PUBLIC_API_BASE
+   否则浏览器会直连 Docker 内部地址（如 localhost:8080
+   或 backend:8080），外网访问会 Network Error。
+
+2. Next.js rewrites 在 standalone 模式下是构建时
+   硬编码进 server.js 的，运行时环境变量不影响。
+
+3. 如果后端地址变化，需要改 next.config.mjs 中
+   rewrites 的默认值，然后重新构建前端。
+
+4. 一键重建脚本即本目录 rebuild-frontend.sh（路径已改为
+   随脚本位置自动推导，不再硬编码）。

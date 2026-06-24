@@ -1,0 +1,56 @@
+# PTIS Caddy 配置（替代 nginx 的 HTTPS 自动方案）。
+# 用法：
+#   1) 在 .env 设置 PTIS_DOMAIN=ptis.example.com 与 ACME_EMAIL=ops@example.com
+#   2) docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+#   3) DNS 把域名解析到本机 80/443，Caddy 自动用 Let's Encrypt 签发证书
+#
+# 本地无域名调试：把第一行换成 :80，证书部分会被自动跳过。
+
+{$PTIS_DOMAIN} {
+    # 自动 TLS：Caddy 用 ACME 自动申请并续期 Let's Encrypt 证书
+    tls {$ACME_EMAIL}
+
+    # 压缩
+    encode zstd gzip
+
+    # 客户端真实 IP 信任本地反代
+    trusted_proxies private_ranges
+
+    # 通用安全头
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        # 取消 Server 标识
+        -Server
+    }
+
+    # 后端 API
+    @api path /api/* /health
+    handle @api {
+        reverse_proxy backend:8080 {
+            transport http {
+                read_timeout 120s
+                write_timeout 120s
+            }
+        }
+    }
+
+    # Next.js 静态资源（更长缓存）
+    @static path /_next/static/* /favicon.ico /robots.txt
+    handle @static {
+        reverse_proxy frontend:3000
+        header Cache-Control "public, max-age=31536000, immutable"
+    }
+
+    # 其它一切走前端
+    handle {
+        reverse_proxy frontend:3000
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}

@@ -1,0 +1,194 @@
+# PTIS 告警规则。
+# Prometheus 加载后会按 evaluation_interval (30s) 计算各表达式，
+# 满足 `for` 持续时长后标记 firing，可被 Alertmanager 路由到飞书/钉钉/邮件。
+
+groups:
+  # ───── 可用性 ─────
+  - name: availability
+    interval: 30s
+    rules:
+      - alert: BackendDown
+        expr: up{job="backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "后端 API 不可用"
+          description: "{{ $labels.instance }} 已连续 2 分钟无法抓取 /metrics，请立即检查容器与日志。"
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: dba
+        annotations:
+          summary: "Postgres 不可用"
+          description: "数据库 exporter 报告 pg_up=0；后端将完全无法响应，立即排查。"
+
+      - alert: HighErrorRate5xx
+        expr: |
+          (sum(rate(ptis_http_requests_total{status=~"5.."}[5m]))
+           / sum(rate(ptis_http_requests_total[5m]))) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "后端 5xx 错误率 > 5%"
+          description: "最近 5 分钟 5xx 占比 {{ $value | humanizePercentage }}，请检查最近变更与依赖服务。"
+
+      - alert: TooManyUnmatchedRoutes
+        expr: |
+          sum(rate(ptis_http_requests_total{route="unmatched"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: info
+          team: backend
+        annotations:
+          summary: "未匹配路由请求数偏高"
+          description: "/metrics 标记为 unmatched 的请求 > 1 req/s，可能存在扫描或前端路由错误。"
+
+  # ───── 性能 ─────
+  - name: performance
+    interval: 30s
+    rules:
+      - alert: SlowP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, route) (rate(ptis_http_request_duration_seconds_bucket[5m]))
+          ) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "接口 P95 > 1s ({{ $labels.route }})"
+          description: "路由 {{ $labels.route }} 5 分钟 P95 已达 {{ $value | humanizeDuration }}，请关注数据库或下游算法服务。"
+
+      - alert: HighInFlight
+        expr: ptis_http_in_flight_requests > 200
+        for: 3m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "在飞请求数过高"
+          description: "{{ $value }} 个请求同时未完成，可能下游阻塞或连接池打满。"
+
+  # ───── 数据库 ─────
+  - name: postgres
+    interval: 1m
+    rules:
+      - alert: PostgresHighConnections
+        expr: pg_stat_activity_count > 150
+        for: 5m
+        labels:
+          severity: warning
+          team: dba
+        annotations:
+          summary: "Postgres 连接数偏高 ({{ $value }})"
+          description: "活跃连接超过 150，pg 默认 max_connections=100/200，存在打满风险。"
+
+      - alert: PostgresDeadlockSurge
+        expr: increase(pg_stat_database_deadlocks{datname="ptis"}[10m]) > 5
+        for: 0m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "10 分钟内出现 {{ $value }} 次死锁"
+          description: "近期写入冲突激增，检查批量更新逻辑或加事务隔离级别。"
+
+      - alert: PostgresReplicationLag
+        expr: pg_replication_lag_seconds > 60
+        for: 5m
+        labels:
+          severity: warning
+          team: dba
+        annotations:
+          summary: "Postgres 主从延迟 > 60s"
+          description: "当前 lag = {{ $value }}s，备库不可用于读分流。"
+
+  # ───── 业务指标 ─────
+  - name: business
+    interval: 1m
+    rules:
+      - alert: TooManyPendingAlerts
+        expr: ptis_alerts_pending > 50
+        for: 10m
+        labels:
+          severity: warning
+          team: analytics
+        annotations:
+          summary: "未处理告警数堆积 ({{ $value }} 条)"
+          description: "客户分析未处理告警超过 50 条，请安排分析师跟进。"
+
+      - alert: TooManyCriticalAlerts
+        expr: ptis_alerts_critical > 10
+        for: 5m
+        labels:
+          severity: critical
+          team: analytics
+        annotations:
+          summary: "严重告警 ({{ $value }} 条) 堆积"
+          description: "严重未处理告警超过 10 条，可能存在系统性异常。"
+
+      - alert: ScheduledJobFailing
+        expr: ptis_scheduled_jobs_recent_failed > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "{{ $value }} 个调度任务执行失败"
+          description: "存在上次执行结果为 failed 的调度任务，请查看 /system/jobs。"
+
+      - alert: ApprovalBacklog
+        expr: ptis_approvals_pending > 20
+        for: 30m
+        labels:
+          severity: warning
+          team: business
+        annotations:
+          summary: "待审批积压 {{ $value }} 条"
+          description: "审批中心待审批超过 20 条且持续 30 分钟，请安排审批人处理。"
+
+  # ───── 资源 ─────
+  - name: resources
+    interval: 1m
+    rules:
+      - alert: HostHighCPU
+        expr: |
+          (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "宿主 CPU > 85%"
+          description: "{{ $labels.instance }} 持续 10 分钟 CPU 利用率 {{ $value | humanizePercentage }}。"
+
+      - alert: HostLowDisk
+        expr: |
+          (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}
+           / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) < 0.15
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "磁盘剩余 < 15% ({{ $labels.mountpoint }})"
+          description: "{{ $labels.instance }} {{ $labels.mountpoint }} 仅剩 {{ $value | humanizePercentage }}。"
+
+      - alert: ContainerOOMKilled
+        expr: |
+          increase(container_oom_events_total{name=~"ptis-.*"}[15m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "容器 {{ $labels.name }} 被 OOM kill"
+          description: "近 15 分钟发生 OOM，请检查内存配额或内存泄漏。"

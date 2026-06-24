@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS idx_users_org;
+ALTER TABLE users DROP COLUMN IF EXISTS org_id;
+DROP TABLE IF EXISTS organizations;

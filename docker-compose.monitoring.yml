@@ -1,0 +1,155 @@
+# ptis-v2 监控栈附加编排：Prometheus + Grafana + 3 个 exporter。
+# 用法：与主 compose 叠加运行
+#   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+#
+# 访问：
+#   Prometheus  → http://localhost:9090
+#   Grafana     → http://localhost:3001  (默认 admin / admin，首次登录改密)
+#
+# 已抓取目标：
+#   - node-exporter:9100      宿主机 CPU/内存/磁盘
+#   - cadvisor:8080           容器资源
+#   - postgres-exporter:9187  Postgres 性能（QPS、连接数、锁等待）
+#   - ptis-backend:8080/health 后端存活探针（仅 up/down）
+#
+# 后续增量：backend 接入 prometheus/client_golang 暴露 /metrics 后，
+# 在 prometheus.yml scrape_configs 加 backend 任务即可。
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: ptis-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prom-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    networks: [ptis]
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: ptis-alertmanager
+    restart: unless-stopped
+    environment:
+      # alertmanager.yml 用 ${VAR:-default} 占位，需 entrypoint envsubst 展开。
+      # 这些变量也应在 .env 配置（否则取默认值，邮件告警连本地 SMTP）。
+      SMTP_FROM: ${SMTP_FROM:-alert@ptis.local}
+      SMTP_HOST: ${SMTP_HOST:-mail.ptis.local:25}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-ops@ptis.local}
+    volumes:
+      # 挂为模板，entrypoint 用 envsubst 渲染到运行时配置（原文件含 ${VAR} 占位，alertmanager 不识别）
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml.tmpl:ro
+      - alertmanager-data:/alertmanager
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        envsubst < /etc/alertmanager/alertmanager.yml.tmpl > /etc/alertmanager/alertmanager.yml
+        /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/alertmanager
+    command: []
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    depends_on:
+      - alert-webhook-proxy
+    networks: [ptis]
+
+  alert-webhook-proxy:
+    build:
+      context: ./monitoring/alert-webhook-proxy
+    image: ptis-alert-webhook:latest
+    container_name: ptis-alert-webhook
+    restart: unless-stopped
+    environment:
+      FEISHU_WEBHOOK_WARNING: ${FEISHU_WEBHOOK_WARNING:-}
+      FEISHU_WEBHOOK_CRITICAL: ${FEISHU_WEBHOOK_CRITICAL:-${FEISHU_WEBHOOK_WARNING:-}}
+      TZ: Asia/Shanghai
+    expose:
+      - "8000"
+    networks: [ptis]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: ptis-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_INSTALL_PLUGINS: ''
+      TZ: Asia/Shanghai
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    depends_on:
+      - prometheus
+    networks: [ptis]
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: ptis-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/host/root'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+    expose:
+      - "9100"
+    networks: [ptis]
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: ptis-cadvisor
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    expose:
+      - "8080"
+    networks: [ptis]
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: ptis-pgexporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-ptis}:${POSTGRES_PASSWORD:-ptis_dev}@postgres:5432/${POSTGRES_DB:-ptis}?sslmode=disable
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/exporter/queries.yaml
+    volumes:
+      - ./monitoring/postgres-queries.yaml:/etc/exporter/queries.yaml:ro
+    depends_on:
+      - postgres
+    expose:
+      - "9187"
+    networks: [ptis]
+
+networks:
+  ptis:
+    external: true
+    name: v2_ptis
+
+volumes:
+  prom-data:
+  grafana-data:
+  alertmanager-data:

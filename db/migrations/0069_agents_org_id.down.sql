@@ -1,0 +1,1 @@
+ALTER TABLE agents DROP COLUMN IF EXISTS org_id;

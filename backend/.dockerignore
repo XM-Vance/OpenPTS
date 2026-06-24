@@ -1,0 +1,10 @@
+.git
+.env
+.env.local
+.vscode
+.idea
+*.log
+tmp/
+dist/
+# 注意：ptis-server-linux / ptis-seed-linux 不能加入本文件——
+# Dockerfile.local（离线路径）需要它们留在构建上下文内。

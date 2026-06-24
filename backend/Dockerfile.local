@@ -1,0 +1,22 @@
+# 本地编译版 Dockerfile — 不依赖 Docker Hub 拉取 golang 镜像（离线/内网环境用）
+# 前置：宿主机先交叉编译出 ptis-server-linux / ptis-seed-linux 两个二进制（见 make up-local
+# 或 docker-compose.local-build.yml 头注释）。
+# 使用方法: docker build -f Dockerfile.local -t ptis-backend:latest .
+FROM alpine:latest
+
+RUN apk add --no-cache ca-certificates tzdata wget \
+    && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
+    && addgroup -S app && adduser -S -G app app
+
+WORKDIR /app
+COPY --chown=app:app ptis-server-linux /app/server
+COPY --chown=app:app ptis-seed-linux   /app/seed
+
+USER app
+EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost:8080/health || exit 1
+
+CMD ["/app/server"]

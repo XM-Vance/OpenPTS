@@ -1,0 +1,14 @@
+# Web框架
+fastapi==0.137.1
+uvicorn==0.49.0
+pydantic==2.12.3
+python-multipart==0.0.20
+
+# PDF转图片
+PyMuPDF>=1.25
+
+# HTTP客户端（调智谱API）
+httpx>=0.28.1
+
+# 数据库
+psycopg2-binary>=2.9

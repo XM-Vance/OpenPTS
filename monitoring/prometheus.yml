@@ -1,0 +1,49 @@
+# PTIS Prometheus 抓取配置。
+# 全局：15s 抓取间隔；按 job 命名。
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 30s
+  external_labels:
+    cluster: ptis
+
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: node
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: host
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: containers
+
+  - job_name: postgres
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: postgres
+          db: ptis
+
+  # 后端业务指标（ptis_http_requests_total / ptis_http_request_duration_seconds 等）
+  - job_name: backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['backend:8080']
+        labels:
+          service: backend
