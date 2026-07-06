@@ -7,7 +7,7 @@
 -- 1) 去重：同一天保留 org=FJ 的记录（FJ 是回填默认省，数据最全），删其他省的重复行
 DELETE FROM holidays a USING holidays b
  WHERE a.holiday_date = b.holiday_date AND a.org_id <> b.org_id
-   AND a.org_id <> (SELECT id FROM organizations WHERE code='FJ');
+   AND a.org_id <> (SELECT id FROM organizations WHERE code='default');
 
 -- 2) 删 org_id 列（含外键、索引、唯一索引）
 DROP INDEX IF EXISTS holidays_org_uniq;

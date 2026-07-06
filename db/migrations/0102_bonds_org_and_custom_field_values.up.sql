@@ -4,7 +4,7 @@
 
 -- ─── bonds 加 org_id（仿 0101 样板）───
 ALTER TABLE bonds ADD COLUMN IF NOT EXISTS org_id uuid REFERENCES organizations(id);
-UPDATE bonds SET org_id = (SELECT id FROM organizations WHERE code='FJ') WHERE org_id IS NULL;
+UPDATE bonds SET org_id = (SELECT id FROM organizations WHERE code='default') WHERE org_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_bonds_org ON bonds(org_id);
 -- 保函按省隔离：同省内 name 唯一，跨省可同名
 CREATE UNIQUE INDEX IF NOT EXISTS bonds_org_name_uniq ON bonds(org_id, name);

@@ -6,43 +6,43 @@
 
 -- rolling_match_quotes（无唯一约束，仅加列+回填+索引）
 ALTER TABLE rolling_match_quotes ADD COLUMN IF NOT EXISTS org_id uuid REFERENCES organizations(id);
-UPDATE rolling_match_quotes SET org_id = (SELECT id FROM organizations WHERE code='FJ') WHERE org_id IS NULL;
+UPDATE rolling_match_quotes SET org_id = (SELECT id FROM organizations WHERE code='default') WHERE org_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_rolling_match_quotes_org ON rolling_match_quotes(org_id);
 
 -- monthly_manual_data（无唯一约束，仅加列+回填+索引）
 ALTER TABLE monthly_manual_data ADD COLUMN IF NOT EXISTS org_id uuid REFERENCES organizations(id);
-UPDATE monthly_manual_data SET org_id = (SELECT id FROM organizations WHERE code='FJ') WHERE org_id IS NULL;
+UPDATE monthly_manual_data SET org_id = (SELECT id FROM organizations WHERE code='default') WHERE org_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_monthly_manual_data_org ON monthly_manual_data(org_id);
 
 -- approval_requests（无唯一约束，仅加列+回填+索引；审批 payload 含敏感金额必须隔离）
 ALTER TABLE approval_requests ADD COLUMN IF NOT EXISTS org_id uuid REFERENCES organizations(id);
-UPDATE approval_requests SET org_id = (SELECT id FROM organizations WHERE code='FJ') WHERE org_id IS NULL;
+UPDATE approval_requests SET org_id = (SELECT id FROM organizations WHERE code='default') WHERE org_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_approval_requests_org ON approval_requests(org_id);
 
 -- rolling_match_snapshots（列级 UNIQUE(trade_date, delivery_date) → 含 org）
 ALTER TABLE rolling_match_snapshots ADD COLUMN IF NOT EXISTS org_id uuid REFERENCES organizations(id);
-UPDATE rolling_match_snapshots SET org_id = (SELECT id FROM organizations WHERE code='FJ') WHERE org_id IS NULL;
+UPDATE rolling_match_snapshots SET org_id = (SELECT id FROM organizations WHERE code='default') WHERE org_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_rolling_match_snapshots_org ON rolling_match_snapshots(org_id);
 ALTER TABLE rolling_match_snapshots DROP CONSTRAINT IF EXISTS rolling_match_snapshots_trade_date_delivery_date_key;
 CREATE UNIQUE INDEX IF NOT EXISTS rolling_match_snapshots_org_uniq ON rolling_match_snapshots(org_id, trade_date, delivery_date);
 
 -- spot_settlement_daily（列级 settlement_date UNIQUE → 含 org）
 ALTER TABLE spot_settlement_daily ADD COLUMN IF NOT EXISTS org_id uuid REFERENCES organizations(id);
-UPDATE spot_settlement_daily SET org_id = (SELECT id FROM organizations WHERE code='FJ') WHERE org_id IS NULL;
+UPDATE spot_settlement_daily SET org_id = (SELECT id FROM organizations WHERE code='default') WHERE org_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_spot_settlement_daily_org ON spot_settlement_daily(org_id);
 ALTER TABLE spot_settlement_daily DROP CONSTRAINT IF EXISTS spot_settlement_daily_settlement_date_key;
 CREATE UNIQUE INDEX IF NOT EXISTS spot_settlement_daily_org_uniq ON spot_settlement_daily(org_id, settlement_date);
 
 -- spot_settlement_period（子句 UNIQUE(settlement_date, period) → 含 org）
 ALTER TABLE spot_settlement_period ADD COLUMN IF NOT EXISTS org_id uuid REFERENCES organizations(id);
-UPDATE spot_settlement_period SET org_id = (SELECT id FROM organizations WHERE code='FJ') WHERE org_id IS NULL;
+UPDATE spot_settlement_period SET org_id = (SELECT id FROM organizations WHERE code='default') WHERE org_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_spot_settlement_period_org ON spot_settlement_period(org_id);
 ALTER TABLE spot_settlement_period DROP CONSTRAINT IF EXISTS spot_settlement_period_settlement_date_period_key;
 CREATE UNIQUE INDEX IF NOT EXISTS spot_settlement_period_org_uniq ON spot_settlement_period(org_id, settlement_date, period);
 
 -- contracts_aggregated_daily（列级 date UNIQUE → 含 org）
 ALTER TABLE contracts_aggregated_daily ADD COLUMN IF NOT EXISTS org_id uuid REFERENCES organizations(id);
-UPDATE contracts_aggregated_daily SET org_id = (SELECT id FROM organizations WHERE code='FJ') WHERE org_id IS NULL;
+UPDATE contracts_aggregated_daily SET org_id = (SELECT id FROM organizations WHERE code='default') WHERE org_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_contracts_aggregated_daily_org ON contracts_aggregated_daily(org_id);
 ALTER TABLE contracts_aggregated_daily DROP CONSTRAINT IF EXISTS contracts_aggregated_daily_date_key;
 CREATE UNIQUE INDEX IF NOT EXISTS contracts_aggregated_daily_org_uniq ON contracts_aggregated_daily(org_id, date);

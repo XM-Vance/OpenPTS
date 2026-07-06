@@ -6,10 +6,10 @@
 
 -- raw_meter_data
 ALTER TABLE raw_meter_data ADD COLUMN IF NOT EXISTS org_id uuid REFERENCES organizations(id);
-UPDATE raw_meter_data SET org_id = (SELECT id FROM organizations WHERE code='FJ') WHERE org_id IS NULL;
+UPDATE raw_meter_data SET org_id = (SELECT id FROM organizations WHERE code='default') WHERE org_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_raw_meter_data_org ON raw_meter_data(org_id);
 
 -- raw_mp_data
 ALTER TABLE raw_mp_data ADD COLUMN IF NOT EXISTS org_id uuid REFERENCES organizations(id);
-UPDATE raw_mp_data SET org_id = (SELECT id FROM organizations WHERE code='FJ') WHERE org_id IS NULL;
+UPDATE raw_mp_data SET org_id = (SELECT id FROM organizations WHERE code='default') WHERE org_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_raw_mp_data_org ON raw_mp_data(org_id);
