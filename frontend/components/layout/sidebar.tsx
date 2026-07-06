@@ -19,6 +19,7 @@ const LABEL_TO_KEY: Record<string, string> = {
   '业务': 'nav.business',
   // 主页
   '仪表盘': 'nav.dashboard',
+  '展示大屏': 'nav.displayScreen',
   // 系统
   '用户管理': 'nav.users',
   '角色管理': 'nav.roles',
@@ -90,16 +91,19 @@ function getIcon(name: string): LucideIcon {
   return icons[name] || LucideIcons.FileText;
 }
 
-export function Sidebar() {
+/**
+ * 导航主体（不含 <aside> 外壳）：供桌面常驻侧边栏与移动 Sheet 抽屉复用。
+ * 调用方负责包外壳与滚动容器；本组件只渲染标题 + 分组链接列表。
+ */
+export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { has } = usePermission();
   const { t } = useI18n();
 
-  // 从 API 加载当前用户可见的页面
   const { data: dynamicPages } = useQuery({
     queryKey: ['menu-visible'],
     queryFn: menuApi.getVisiblePages,
-    staleTime: 5 * 60 * 1000, // 5 分钟缓存
+    staleTime: 5 * 60 * 1000,
   });
 
   const tr = (label: string): string => {
@@ -107,100 +111,81 @@ export function Sidebar() {
     return key ? t(key) : label;
   };
 
-  // 如果 API 返回了数据，使用动态菜单；否则回退到静态菜单
-  if (dynamicPages && dynamicPages.length > 0) {
-    // 按组名分组
-    const groups = new Map<string, MenuPage[]>();
-    for (const page of dynamicPages) {
-      if (!groups.has(page.group_name)) {
-        groups.set(page.group_name, []);
-      }
-      groups.get(page.group_name)!.push(page);
-    }
-
+  const renderItem = (href: string, label: string, Icon: LucideIcon, key: string) => {
+    const active = pathname === href || pathname.startsWith(href + '/');
     return (
-      <aside className="flex h-full w-60 shrink-0 flex-col border-r bg-card">
-        <div className="flex h-14 items-center border-b px-4">
-          <span className="text-sm font-bold">{t('app.title')}</span>
-        </div>
-        <nav className="flex-1 space-y-4 overflow-y-auto p-3">
-          {Array.from(groups.entries()).map(([groupName, pages]) => (
-            <div key={groupName}>
-              <p className="mb-1 px-2 text-xs font-medium text-muted-foreground">
-                {tr(groupName)}
-              </p>
-              <ul className="space-y-0.5">
-                {pages.map((page) => {
-                  const Icon = getIcon(page.icon);
-                  const active =
-                    pathname === page.href || pathname.startsWith(page.href + '/');
-                  return (
-                    <li key={page.code}>
-                      <Link
-                        href={page.href}
-                        className={cn(
-                          'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
-                          active
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-foreground hover:bg-accent',
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {tr(page.label)}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
-        </nav>
-      </aside>
+      <li key={key}>
+        <Link
+          href={href}
+          onClick={onNavigate}
+          className={cn(
+            'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
+            active ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent',
+          )}
+        >
+          <Icon className="h-4 w-4" />
+          {tr(label)}
+        </Link>
+      </li>
     );
-  }
+  };
 
-  // 回退：使用原有静态菜单（API 未响应或加载失败时）
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r bg-card">
+    <>
       <div className="flex h-14 items-center border-b px-4">
         <span className="text-sm font-bold">{t('app.title')}</span>
       </div>
       <nav className="flex-1 space-y-4 overflow-y-auto p-3">
-        {MENU.map((group) => {
-          const visible = group.items.filter((it) => !it.permission || has(it.permission));
-          if (visible.length === 0) return null;
-          return (
-            <div key={group.group}>
-              <p className="mb-1 px-2 text-xs font-medium text-muted-foreground">
-                {tr(group.group)}
-              </p>
-              <ul className="space-y-0.5">
-                {visible.map((it) => {
-                  const Icon = it.icon;
-                  const active =
-                    pathname === it.href || pathname.startsWith(it.href + '/');
-                  return (
-                    <li key={it.href}>
-                      <Link
-                        href={it.href}
-                        className={cn(
-                          'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
-                          active
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-foreground hover:bg-accent',
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {tr(it.label)}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          );
-        })}
+        {/* 动态菜单优先 */}
+        {dynamicPages && dynamicPages.length > 0
+          ? (() => {
+              const groups = new Map<string, MenuPage[]>();
+              for (const page of dynamicPages) {
+                if (!groups.has(page.group_name)) groups.set(page.group_name, []);
+                groups.get(page.group_name)!.push(page);
+              }
+              return Array.from(groups.entries()).map(([groupName, pages]) => (
+                <div key={groupName}>
+                  <p className="mb-1 px-2 text-xs font-medium text-muted-foreground">
+                    {tr(groupName)}
+                  </p>
+                  <ul className="space-y-0.5">
+                    {pages.map((page) => {
+                      const Icon = getIcon(page.icon);
+                      return renderItem(page.href, page.label, Icon, page.code);
+                    })}
+                  </ul>
+                </div>
+              ));
+            })()
+          : // 回退：静态菜单
+            MENU.map((group) => {
+              const visible = group.items.filter((it) => !it.permission || has(it.permission));
+              if (visible.length === 0) return null;
+              return (
+                <div key={group.group}>
+                  <p className="mb-1 px-2 text-xs font-medium text-muted-foreground">
+                    {tr(group.group)}
+                  </p>
+                  <ul className="space-y-0.5">
+                    {visible.map((it) => renderItem(it.href, it.label, it.icon, it.href))}
+                  </ul>
+                </div>
+              );
+            })}
       </nav>
+    </>
+  );
+}
+
+/**
+ * 桌面侧边栏：<768px 隐藏（移动端由 AppShell 用 Sheet 承载同一 SidebarNav）。
+ * hidden md:flex 保证桌面端布局与原 w-60 常驻行为完全一致。
+ */
+export function Sidebar() {
+  return (
+    <aside className="hidden h-full w-60 shrink-0 flex-col border-r bg-card md:flex">
+      <SidebarNav />
     </aside>
   );
 }
