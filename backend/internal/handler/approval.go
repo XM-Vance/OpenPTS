@@ -23,11 +23,13 @@ func NewApprovalHandler(repo *db.ApprovalRepository, reg *approval.Registry, hub
 	return &ApprovalHandler{repo: repo, registry: reg, hub: hub}
 }
 
-func (h *ApprovalHandler) notify(a *db.Approval, action string) {
+// notify 推送审批事件。按当前活跃省（orgID）定向广播——A 省审批不推给 B 省。
+// 总部（isHQ）订阅者仍会收到（全局视角）。orgID 由调用方从请求上下文取。
+func (h *ApprovalHandler) notify(a *db.Approval, action string, orgID string) {
 	if h.hub == nil {
 		return
 	}
-	h.hub.Publish(SSEEvent{
+	h.hub.PublishToOrg(orgID, SSEEvent{
 		Type: "approval",
 		Data: map[string]any{
 			"action":      action,            // submitted / approved / rejected / withdrawn
@@ -92,7 +94,8 @@ func (h *ApprovalHandler) Submit(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请稍后重试"})
 		return
 	}
-	h.notify(a, "submitted")
+	orgNotify, _ := db.OrgFilter(c.Request.Context()) // 总部（全部省）时为空 → notify 回退全量广播
+	h.notify(a, "submitted", orgNotify)
 	c.JSON(http.StatusCreated, a)
 }
 
@@ -164,7 +167,9 @@ type transitionReq struct {
 }
 
 // Approve POST /api/v1/approvals/:id/approve
-// 通过后调用 applier 自动落库（如有注册）；落库失败则回滚状态。
+// 单事务原子化（P0-B2）：Get + Transition + applier.Apply 在同一事务内完成，
+// 任一步失败则整笔回滚，杜绝「已 approved 但未落库」/「部分写入后状态错乱」。
+// Transition 带 status 乐观锁（P0-B8）：并发审批只有一方成功。
 func (h *ApprovalHandler) Approve(c *gin.Context) {
 	var req transitionReq
 	_ = c.ShouldBindJSON(&req)
@@ -173,16 +178,30 @@ func (h *ApprovalHandler) Approve(c *gin.Context) {
 		reviewer = uid.String()
 	}
 	id := c.Param("id")
+	ctx := c.Request.Context()
 
-	// 1) 先取当前审批以拿到 resource / payload
-	cur, err := h.repo.Get(c.Request.Context(), id)
+	tx, err := h.repo.BeginTx(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("开启审批事务失败")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请稍后重试"})
+		return
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+
+	// 1) 先取当前审批以拿到 resource / payload（事务内）
+	cur, err := h.repo.GetTx(ctx, tx, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 2) 状态机迁移到 approved
-	a, err := h.repo.Transition(c.Request.Context(), id, "approved", reviewer, req.Note)
+	// 2) 状态机迁移到 approved（事务内 + 乐观锁）
+	a, err := h.repo.TransitionTx(ctx, tx, id, "approved", reviewer, req.Note)
 	if err != nil {
 		if err == db.ErrInvalidApprovalTransition {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -193,16 +212,22 @@ func (h *ApprovalHandler) Approve(c *gin.Context) {
 		return
 	}
 
-	// 3) 调用 applier 自动落库；失败时回滚状态（保留 review_note 提示）
-	if err := h.registry.Apply(c.Request.Context(), cur.Resource, cur.ResourceID, cur.Payload); err != nil {
-		// 回滚：手工把状态拉回 pending，附带错误信息
-		_, _ = h.repo.Transition(c.Request.Context(), id, "pending", reviewer, "落库失败: "+err.Error())
-		log.Error().Err(err).Msg("审批已通过但自动落库失败，已回滚为待审批")
+	// 3) 调用 applier 自动落库（同一事务内）；失败则整笔回滚（无需手工补偿）
+	if err := h.registry.Apply(ctx, tx, cur.Resource, cur.ResourceID, cur.Payload); err != nil {
+		log.Error().Err(err).Msg("审批自动落库失败，事务回滚")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请稍后重试"})
 		return
 	}
 
-	h.notify(a, "approved")
+	if err := tx.Commit(ctx); err != nil {
+		log.Error().Err(err).Msg("提交审批事务失败")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请稍后重试"})
+		return
+	}
+	committed = true
+
+	orgNotifyApprove, _ := db.OrgFilter(ctx)
+	h.notify(a, "approved", orgNotifyApprove)
 	c.JSON(http.StatusOK, a)
 }
 
@@ -238,7 +263,8 @@ func (h *ApprovalHandler) transition(c *gin.Context, target string) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请稍后重试"})
 		return
 	}
-	h.notify(a, target)
+	orgNotifyTrans, _ := db.OrgFilter(c.Request.Context())
+	h.notify(a, target, orgNotifyTrans)
 	c.JSON(http.StatusOK, a)
 }
 

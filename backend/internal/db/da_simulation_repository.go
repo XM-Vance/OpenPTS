@@ -4,7 +4,7 @@ package db
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"time"
 )
@@ -47,12 +47,12 @@ func NewDASimulationRepository(pool *Pool) *DASimulationRepository {
 
 // CreateScenario 创建模拟场景（草稿状态）
 func (r *DASimulationRepository) CreateScenario(ctx context.Context, name, description string, simDate time.Time, userID string) (string, error) {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return "", ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return "", err
 	}
 	var id string
-	err := r.pool.QueryRow(ctx,
+	err = r.pool.QueryRow(ctx,
 		`INSERT INTO da_simulation_scenarios (name, description, sim_date, status, created_by, org_id)
 		 VALUES ($1, NULLIF($2,''), $3, 'draft', NULLIF($4,'')::uuid, $5::uuid)
 		 RETURNING id`,
@@ -232,18 +232,31 @@ func (r *DASimulationRepository) SaveSimulationResults(ctx context.Context, scen
 
 // GenerateDemo 生成演示数据
 func (r *DASimulationRepository) GenerateDemo(ctx context.Context) (int, error) {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return 0, ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return 0, err
 	}
 	statuses := []string{"draft", "submitted", "submitted", "settled", "settled"}
 	cnt := 0
 	for i := 0; i < 10; i++ {
 		d := time.Now().AddDate(0, 0, -i).Truncate(24 * time.Hour)
-		status := statuses[rand.Intn(len(statuses))]
+		status := statuses[rand.IntN(len(statuses))]
+
+		// B6：每个场景的三步写（场景/时段结果/汇总）包在同一事务内，
+		// 任一步失败整笔回滚（照 SaveSimulationResults 范式），避免半成品。
+		tx, err := r.pool.Begin(ctx)
+		if err != nil {
+			return cnt, err
+		}
+		committed := false
+		defer func() {
+			if !committed {
+				_ = tx.Rollback(ctx)
+			}
+		}()
 
 		var id string
-		err := r.pool.QueryRow(ctx,
+		err = tx.QueryRow(ctx,
 			`INSERT INTO da_simulation_scenarios (name, description, sim_date, status, org_id)
 			 VALUES ($1,$2,$3,$4,$5::uuid) RETURNING id`,
 			"模拟场景 "+d.Format("01-02"), "自动生成的模拟场景", d, status, org).Scan(&id)
@@ -276,7 +289,7 @@ func (r *DASimulationRepository) GenerateDemo(ctx context.Context) (int, error) 
 				totalProfit += settlement
 			}
 		}
-		if _, err := r.pool.Exec(ctx,
+		if _, err := tx.Exec(ctx,
 			`INSERT INTO da_simulation_period_results
 			   (scenario_id, period, declared_volume_mwh, simulated_price,
 			    simulated_cost, spot_actual_price, settlement_amount)
@@ -289,7 +302,7 @@ func (r *DASimulationRepository) GenerateDemo(ctx context.Context) (int, error) 
 		if totalVol > 0 {
 			avgPrice = totalCost / totalVol
 		}
-		if _, err := r.pool.Exec(ctx,
+		if _, err := tx.Exec(ctx,
 			`UPDATE da_simulation_scenarios
 			    SET total_volume_mwh = $2, avg_price = $3, total_cost = $4,
 			        profit = $5, updated_at = now()
@@ -297,6 +310,10 @@ func (r *DASimulationRepository) GenerateDemo(ctx context.Context) (int, error) 
 			id, totalVol, avgPrice, totalCost, totalProfit); err != nil {
 			return cnt, err
 		}
+		if err := tx.Commit(ctx); err != nil {
+			return cnt, err
+		}
+		committed = true
 		cnt++
 	}
 	return cnt, nil

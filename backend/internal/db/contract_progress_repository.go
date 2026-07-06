@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 )
 
@@ -98,16 +98,16 @@ type ContractProgressInput struct {
 }
 
 func (r *ContractProgressRepository) Create(ctx context.Context, in ContractProgressInput) (string, error) {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return "", ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return "", err
 	}
 	completion := 0.0
 	if in.PlannedEnergy > 0 {
 		completion = in.ActualEnergy / in.PlannedEnergy * 100
 	}
 	var id string
-	err := r.pool.QueryRow(ctx,
+	err = r.pool.QueryRow(ctx,
 		`INSERT INTO contract_progress
 		   (contract_id, operating_month, planned_energy_mwh, actual_energy_mwh,
 		    completion_rate, status, note, org_id)
@@ -119,7 +119,7 @@ func (r *ContractProgressRepository) Create(ctx context.Context, in ContractProg
 }
 
 func (r *ContractProgressRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
@@ -155,11 +155,11 @@ func (r *ContractProgressRepository) GenerateDemo(ctx context.Context) (int, err
 	cnt := 0
 	for _, c := range contracts {
 		for i := 0; i < 6; i++ {
-			ym := time.Now().AddDate(0, -i, 0).Format("2006-01")
+			ym := monthsAgoYM(i)
 			planned := c.energy / 12
 			actual := planned * (0.75 + rand.Float64()*0.4)
 			rate := actual / planned * 100
-			status := statuses[rand.Intn(len(statuses))]
+			status := statuses[rand.IntN(len(statuses))]
 			if _, err := r.pool.Exec(ctx,
 				`INSERT INTO contract_progress
 				   (contract_id, operating_month, planned_energy_mwh, actual_energy_mwh,

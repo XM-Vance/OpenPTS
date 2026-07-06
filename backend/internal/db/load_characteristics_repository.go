@@ -5,7 +5,7 @@ package db
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 )
 
@@ -86,7 +86,8 @@ func (r *LoadCharacteristicsRepository) GenerateDemo(ctx context.Context) (int, 
 		}
 	}
 	args := []any{orgID}
-	rows, err := r.pool.Query(ctx, `SELECT id FROM customers WHERE org_id = $1::uuid LIMIT 30`, args...)
+	// Phase 3b：负荷特性放开到意向期客户（含 intent/service/churned，仅排除原始 lead）。
+	rows, err := r.pool.Query(ctx, `SELECT id FROM customers WHERE org_id = $1::uuid AND lifecycle_stage <> 'lead' LIMIT 30`, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -104,14 +105,14 @@ func (r *LoadCharacteristicsRepository) GenerateDemo(ctx context.Context) (int, 
 	cnt := 0
 	for _, cid := range customers {
 		for i := 0; i < 3; i++ {
-			ym := time.Now().AddDate(0, -i, 0).Format("2006-01")
+			ym := monthsAgoYM(i)
 			avgDaily := 50 + rand.Float64()*200
 			peak := avgDaily * (1.3 + rand.Float64()*0.5)
 			valley := avgDaily * (0.3 + rand.Float64()*0.3)
 			ratio := peak / valley
 			factor := avgDaily / peak * 100
 			peakHours := 6 + rand.Float64()*6
-			ltype := loadTypes[rand.Intn(len(loadTypes))]
+			ltype := loadTypes[rand.IntN(len(loadTypes))]
 			if _, err := r.pool.Exec(ctx,
 				`INSERT INTO load_characteristics
 				   (customer_id, analysis_month, avg_daily_mwh, peak_mw, valley_mw,

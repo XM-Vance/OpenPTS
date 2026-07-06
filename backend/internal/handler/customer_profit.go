@@ -20,7 +20,9 @@ func NewCustomerProfitHandler(repo *db.CustomerProfitRepository) *CustomerProfit
 
 func (h *CustomerProfitHandler) List(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
-	list, err := h.repo.List(c.Request.Context(), c.Query("month"), limit)
+	// estimate=true 查签约前测算，缺省查签约后实际结算（避免两类混淆）。
+	isEstimate := c.Query("estimate") == "true"
+	list, err := h.repo.List(c.Request.Context(), c.Query("month"), limit, isEstimate)
 	if err != nil {
 		log.Error().Err(err).Msg("操作失败")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请稍后重试"})

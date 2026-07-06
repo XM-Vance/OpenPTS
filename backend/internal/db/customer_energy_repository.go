@@ -1,5 +1,5 @@
 // 客户历史电量档案仓储：客户逐月电量（customer_monthly_energy）。
-// 数据来源：文档解析「确认入库」选「客户电量档案」（市场化账单/月度电量），按活跃省隔离。
+// 数据来源：文档解析「确认入库」选「客户电量档案」（市场化账单/月度电量），按活跃组织隔离。
 package db
 
 import (
@@ -68,13 +68,13 @@ func (r *CustomerEnergyRepository) List(ctx context.Context, customerID string, 
 }
 
 // Upsert 写入/更新某客户某月电量（文档「确认入库」使用）。
-// 写操作要求具体活跃省；同省同客户同月覆盖更新。
+// 写操作要求具体活跃组织；同省同客户同月覆盖更新。
 func (r *CustomerEnergyRepository) Upsert(ctx context.Context, customerID, month string, monthlyEnergy float64) error {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return err
 	}
-	_, err := r.pool.Exec(ctx,
+	_, err = r.pool.Exec(ctx,
 		`INSERT INTO customer_monthly_energy (customer_id, month, monthly_energy, org_id)
 		 VALUES ($1::uuid,$2,$3,$4::uuid)
 		 ON CONFLICT (org_id, customer_id, month) DO UPDATE SET

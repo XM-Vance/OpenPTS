@@ -6,8 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // ─────────────── 虚拟电厂 ───────────────
@@ -24,17 +26,17 @@ type VPPResource struct {
 }
 
 type VPPDispatch struct {
-	ID              string    `json:"id"`
-	DispatchDate    time.Time `json:"dispatch_date"`
-	ResourceID      string    `json:"resource_id"`
-	ResourceName    string    `json:"resource_name,omitempty"`
-	DispatchType    string    `json:"dispatch_type"`
-	DispatchedMW    float64   `json:"dispatched_mw"`
-	DurationMin     int       `json:"duration_min"`
-	ResponseTimeSec int       `json:"response_time_sec"`
-	Revenue         float64   `json:"revenue"`
-	Status          string    `json:"status"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID              string          `json:"id"`
+	DispatchDate    time.Time       `json:"dispatch_date"`
+	ResourceID      string          `json:"resource_id"`
+	ResourceName    string          `json:"resource_name,omitempty"`
+	DispatchType    string          `json:"dispatch_type"`
+	DispatchedMW    float64         `json:"dispatched_mw"`
+	DurationMin     int             `json:"duration_min"`
+	ResponseTimeSec int             `json:"response_time_sec"`
+	Revenue         decimal.Decimal `json:"revenue"` // P4: numeric(18,4)
+	Status          string          `json:"status"`
+	CreatedAt       time.Time       `json:"created_at"`
 }
 
 type VPPRepository struct{ pool *Pool }
@@ -107,7 +109,7 @@ func (r *VPPRepository) ListDispatches(ctx context.Context, days int) ([]*VPPDis
 }
 
 func (r *VPPRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
@@ -145,12 +147,13 @@ func (r *VPPRepository) GenerateDemo(ctx context.Context) (int, error) {
 		d := time.Now().AddDate(0, 0, -i).Truncate(24 * time.Hour)
 		for _, rid := range resIDs {
 			for j := 0; j < 3; j++ {
-				dtype := dispatchTypes[rand.Intn(len(dispatchTypes))]
+				dtype := dispatchTypes[rand.IntN(len(dispatchTypes))]
 				dispMW := 2 + rand.Float64()*8
-				dur := 15 + rand.Intn(180)
-				resp := 1 + rand.Intn(300)
-				rev := dispMW * float64(dur) / 60 * (300 + rand.Float64()*200)
-				status := statuses[rand.Intn(len(statuses))]
+				dur := 15 + rand.IntN(180)
+				resp := 1 + rand.IntN(300)
+				// P4: 收入 decimal（按 MW·时·单价折算）；功率/时长保持 float/int。
+				rev := decimal.NewFromFloat(dispMW * float64(dur) / 60 * (300 + rand.Float64()*200)).Round(4)
+				status := statuses[rand.IntN(len(statuses))]
 				if _, err := r.pool.Exec(ctx,
 					`INSERT INTO vpp_dispatches
 					   (dispatch_date, resource_id, dispatch_type, dispatched_mw, duration_min,

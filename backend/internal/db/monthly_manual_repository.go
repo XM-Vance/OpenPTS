@@ -4,7 +4,8 @@ package db
 
 import (
 	"context"
-	"math/rand"
+	"fmt"
+	"math/rand/v2"
 	"time"
 )
 
@@ -32,28 +33,24 @@ func NewMonthlyManualRepository(pool *Pool) *MonthlyManualRepository {
 
 func (r *MonthlyManualRepository) List(ctx context.Context, month, category string) ([]*MonthlyManualItem, error) {
 	args := []any{}
-	conds := []string{}
+	n := 1
+	q := `SELECT id, operating_month, category, item_name, value, unit,
+			source, note, created_by, created_at, updated_at
+		  FROM monthly_manual_data WHERE 1=1`
+	if org, scoped := OrgFilter(ctx); scoped {
+		args = append(args, org)
+		q += fmt.Sprintf(" AND org_id = $%d::uuid", n)
+		n++
+	}
 	if month != "" {
 		args = append(args, month)
-		conds = append(conds, "operating_month = $1")
+		q += fmt.Sprintf(" AND operating_month = $%d", n)
+		n++
 	}
 	if category != "" {
 		args = append(args, category)
-		idx := "$1"
-		if len(args) == 2 {
-			idx = "$2"
-		}
-		conds = append(conds, "category = "+idx)
-	}
-	q := `SELECT id, operating_month, category, item_name, value, unit,
-			source, note, created_by, created_at, updated_at
-		  FROM monthly_manual_data`
-	for i, c := range conds {
-		if i == 0 {
-			q += " WHERE " + c
-		} else {
-			q += " AND " + c
-		}
+		q += fmt.Sprintf(" AND category = $%d", n)
+		n++
 	}
 	q += " ORDER BY operating_month DESC, category ASC, item_name ASC LIMIT 200"
 	rows, err := r.pool.Query(ctx, q, args...)
@@ -86,19 +83,28 @@ type ManualItemInput struct {
 }
 
 func (r *MonthlyManualRepository) Create(ctx context.Context, in ManualItemInput) (string, error) {
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return "", err
+	}
 	var id string
-	err := r.pool.QueryRow(ctx,
+	err = r.pool.QueryRow(ctx,
 		`INSERT INTO monthly_manual_data
-		   (operating_month, category, item_name, value, unit, source, note, created_by)
+		   (operating_month, category, item_name, value, unit, source, note, created_by, org_id)
 		 VALUES ($1,$2,$3,$4,$5,
-			NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''))
+			NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''), $9::uuid)
 		 RETURNING id`,
 		in.OperatingMonth, in.Category, in.ItemName, in.Value, in.Unit,
-		in.Source, in.Note, in.CreatedBy).Scan(&id)
+		in.Source, in.Note, in.CreatedBy, org).Scan(&id)
 	return id, err
 }
 
 func (r *MonthlyManualRepository) GenerateDemo(ctx context.Context) (int, error) {
+	// 演示数据回填：未选具体省（总部「全部省」）时回退 FJ，与回填脚本一致。
+	org, scoped := OrgFilter(ctx)
+	if !scoped {
+		org = "FJ"
+	}
 	items := []struct {
 		cat, name, unit string
 	}{
@@ -125,16 +131,16 @@ func (r *MonthlyManualRepository) GenerateDemo(ctx context.Context) (int, error)
 	}
 	cnt := 0
 	for m := 0; m < 6; m++ {
-		ym := time.Now().AddDate(0, -m, 0).Format("2006-01")
+		ym := monthsAgoYM(m)
 		for _, it := range items {
 			base := bases[it.name]
 			v := base * (0.85 + rand.Float64()*0.3)
 			if _, err := r.pool.Exec(ctx,
 				`INSERT INTO monthly_manual_data
-				   (operating_month, category, item_name, value, unit, source, created_by)
-				 VALUES ($1,$2,$3,$4,$5,'系统初始化','admin')
+				   (operating_month, category, item_name, value, unit, source, created_by, org_id)
+				 VALUES ($1,$2,$3,$4,$5,'系统初始化','admin',$6::uuid)
 				 ON CONFLICT DO NOTHING`,
-				ym, it.cat, it.name, v, it.unit); err != nil {
+				ym, it.cat, it.name, v, it.unit, org); err != nil {
 				return cnt, err
 			}
 			cnt++

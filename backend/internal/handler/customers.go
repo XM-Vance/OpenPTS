@@ -8,12 +8,12 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ptis/backend/internal/auth"
-	"github.com/ptis/backend/internal/db"
-	"github.com/ptis/backend/internal/masking"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/ptis/backend/internal/auth"
+	"github.com/ptis/backend/internal/db"
+	"github.com/ptis/backend/internal/masking"
 )
 
 type CustomersHandler struct {
@@ -105,10 +105,11 @@ type CustomerRequest struct {
 	Tags      []string        `json:"tags"`
 	Accounts  json.RawMessage `json:"accounts"`
 	IsDemo    bool            `json:"is_demo"`
+	AgentID   string          `json:"agent_id"` // Phase 2：所属代理商 UUID（空=不绑定）
 }
 
 func (req CustomerRequest) toInput() db.CustomerInput {
-	return db.CustomerInput{
+	in := db.CustomerInput{
 		UserName:  req.UserName,
 		ShortName: req.ShortName,
 		Location:  req.Location,
@@ -118,6 +119,13 @@ func (req CustomerRequest) toInput() db.CustomerInput {
 		Accounts:  req.Accounts,
 		IsDemo:    req.IsDemo,
 	}
+	// 代理商 FK：空串=不绑定；非法 UUID 静默忽略（保持 nil，不阻断客户保存）。
+	if req.AgentID != "" {
+		if id, err := uuid.Parse(req.AgentID); err == nil {
+			in.AgentID = &id
+		}
+	}
+	return in
 }
 
 // Create POST /api/v1/customers
@@ -226,13 +234,16 @@ func (h *CustomersHandler) View360(c *gin.Context) {
 		base = append(base, org) // 第 2 个参数固定为 org_id，各查询占位符序号均为 2
 	}
 	queries := map[string]linkedRow{
-		"contracts":       {`SELECT id::text, customer_name, status, contract_type, start_date, end_date FROM retail_contracts WHERE customer_id=$1` + orgClause(2) + ` ORDER BY created_at DESC LIMIT 50`, base},
-		"documents":       {`SELECT id::text, filename, doc_type, status, created_at FROM documents WHERE customer_id=$1` + orgClause(2) + ` ORDER BY created_at DESC LIMIT 50`, base},
-		"settlements":     {`SELECT id::text, period, total_amount, status FROM monthly_settlements WHERE customer_id=$1` + orgClause(2) + ` ORDER BY period DESC LIMIT 50`, base},
-		"alerts":          {`SELECT id::text, alert_type, severity, message, created_at FROM customer_alerts WHERE customer_id=$1` + orgClause(2) + ` ORDER BY created_at DESC LIMIT 50`, base},
-		"stations":        {`SELECT id::text, station_name, capacity_kw FROM solar_stations WHERE customer_id=$1` + orgClause(2) + ` ORDER BY station_name`, base},
-		"load_profile":    {`SELECT id::text, month, max_demand, avg_demand, load_factor FROM customer_load_profiles WHERE customer_id=$1` + orgClause(2) + ` ORDER BY month DESC LIMIT 12`, base},
-		"profit":          {`SELECT id::text, month, revenue, cost, profit, profit_margin FROM customer_profits WHERE customer_id=$1` + orgClause(2) + ` ORDER BY month DESC LIMIT 12`, base},
+		"contracts":    {`SELECT id::text, customer_name, status, contract_type, start_date, end_date FROM retail_contracts WHERE customer_id=$1` + orgClause(2) + ` ORDER BY created_at DESC LIMIT 50`, base},
+		"documents":    {`SELECT id::text, filename, doc_type, status, created_at FROM documents WHERE customer_id=$1` + orgClause(2) + ` ORDER BY created_at DESC LIMIT 50`, base},
+		"settlements":  {`SELECT id::text, period, total_amount, status FROM monthly_settlements WHERE customer_id=$1` + orgClause(2) + ` ORDER BY period DESC LIMIT 50`, base},
+		"alerts":       {`SELECT id::text, alert_type, severity, message, created_at FROM customer_alerts WHERE customer_id=$1` + orgClause(2) + ` ORDER BY created_at DESC LIMIT 50`, base},
+		"stations":     {`SELECT id::text, station_name, capacity_kw FROM solar_stations WHERE customer_id=$1` + orgClause(2) + ` ORDER BY station_name`, base},
+		"load_profile": {`SELECT id::text, month, max_demand, avg_demand, load_factor FROM customer_load_profiles WHERE customer_id=$1` + orgClause(2) + ` ORDER BY month DESC LIMIT 12`, base},
+		// customer_profit（单数）真实表：列名 operating_month/gross_profit/gross_margin，
+		// 用别名对齐 360 前端字段（month/profit/margin，见 360/page.tsx ProfitTab）。
+		// is_estimate=false 只取签约后实际结算，排除签约前测算（0095 引入），避免同月测算/实际重复行。
+		"profit":          {`SELECT id::text, operating_month AS month, revenue, cost, gross_profit AS profit, gross_margin AS margin FROM customer_profit WHERE customer_id=$1 AND is_estimate=false` + orgClause(2) + ` ORDER BY operating_month DESC LIMIT 12`, base},
 		"characteristics": {`SELECT id::text, month, industry_type, voltage_level, contract_capacity, max_demand FROM load_characteristics WHERE customer_id=$1` + orgClause(2) + ` ORDER BY month DESC LIMIT 12`, base},
 	}
 

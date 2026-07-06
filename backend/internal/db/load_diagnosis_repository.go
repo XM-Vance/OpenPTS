@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"time"
 )
@@ -33,12 +34,18 @@ func (r *LoadDiagnosisRepository) List(ctx context.Context, days int) ([]*LoadDi
 		days = 14
 	}
 	since := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
-	rows, err := r.pool.Query(ctx, `
+	args := []any{since}
+	orgClause := ""
+	if org, scoped := OrgFilter(ctx); scoped { // 按活跃组织隔离
+		args = append(args, org)
+		orgClause = fmt.Sprintf(" AND u.org_id = $%d::uuid", len(args))
+	}
+	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
 		SELECT u.customer_id::text, c.user_name, u.date, u.quality_flag, u.curve_96
 		FROM user_load_data u JOIN customers c ON c.id = u.customer_id
-		WHERE u.date >= $1::date
+		WHERE u.date >= $1::date%s
 		ORDER BY u.date DESC, c.user_name ASC
-		LIMIT 200`, since)
+		LIMIT 200`, orgClause), args...)
 	if err != nil {
 		return nil, err
 	}

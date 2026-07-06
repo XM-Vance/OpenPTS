@@ -2,7 +2,9 @@
 package scheduler
 
 import (
+	"bytes"
 	"context"
+	"os/exec"
 	"time"
 
 	"github.com/ptis/backend/internal/db"
@@ -20,7 +22,8 @@ func CleanupTokens(ctx context.Context, pool *db.Pool) error {
 	return nil
 }
 
-// AggregateDailyActive 汇总日活用户（占位实现：仅打日志）。
+// AggregateDailyActive 汇总日活用户并落库到 dau_daily（供趋势查询）。
+// 数据源：auth_sessions（昨日去重 user_id）。UPSERT 到 dau_daily。
 func AggregateDailyActive(ctx context.Context, pool *db.Pool) error {
 	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 	var n int
@@ -30,18 +33,30 @@ func AggregateDailyActive(ctx context.Context, pool *db.Pool) error {
 	if err != nil {
 		return err
 	}
-	log.Info().Str("date", yesterday).Int("dau", n).Msg("汇总日活用户")
+	// 落库（UPSERT：重算同一日则覆盖）
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO dau_daily (date, user_count, computed_at)
+		 VALUES ($1::date, $2, now())
+		 ON CONFLICT (date) DO UPDATE SET user_count = EXCLUDED.user_count, computed_at = now()`,
+		yesterday, n); err != nil {
+		return err
+	}
+	log.Info().Str("date", yesterday).Int("dau", n).
+		Msg("汇总日活用户（已落库 dau_daily）")
 	return nil
 }
 
-// RefreshDashboardKPI 刷新仪表盘 KPI 缓存（当前为占位 — 仪表盘是即时 SQL，暂无缓存）。
+// RefreshDashboardKPI 仪表盘存活探针（非 KPI 预聚合）。
+// 仪表盘走即时 SQL + 内存 TTL 缓存（dashboard.go），无需预聚合到 cache 表；
+// 本任务仅周期性 ping DB 确认调度链路 + 数据库连通，不产生业务副作用。
+// 若数据量达到千万级慢查询阈值，再考虑建预聚合表。
 func RefreshDashboardKPI(ctx context.Context, pool *db.Pool) error {
-	// 真实场景会在此预聚合数据到 cache 表；目前仅做存活探针。
 	var n int
-	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM customers`).Scan(&n); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM customers WHERE lifecycle_stage NOT IN ('intent','lead')`).Scan(&n); err != nil {
 		return err
 	}
-	log.Info().Int("customers", n).Msg("仪表盘 KPI 探针（占位）")
+	log.Info().Int("customers", n).
+		Msg("仪表盘存活探针（DB 连通正常）")
 	return nil
 }
 
@@ -67,5 +82,72 @@ func ExpireContracts(ctx context.Context, pool *db.Pool) error {
 		Str("current_month", currentMonth).
 		Msg("合同到期归档")
 
+	return nil
+}
+
+// FetchMarketData 调用外部 AKShare 采集脚本，刷新 30 类市场行情数据（md_* 表）。
+// 脚本路径默认 scripts/data-collection/fetch_market_data.py（相对仓库根 / 容器工作目录），
+// 可用环境变量 MARKET_DATA_SCRIPT 覆盖。采集失败只记日志、不阻塞调度循环。
+func FetchMarketData(ctx context.Context, pool *db.Pool) error {
+	// pool 在本任务中不直接使用（脚本自行连库），保留入参以满足 JobFunc 签名。
+	_ = pool
+
+	const defaultScript = "scripts/data-collection/fetch_market_data.py"
+	cmd := exec.CommandContext(ctx, "python3", defaultScript)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		log.Error().
+			Err(err).
+			Str("stdout", stdout.String()).
+			Str("stderr", stderr.String()).
+			Msg("市场行情采集失败")
+		return err
+	}
+	log.Info().
+		Str("stdout", stdout.String()).
+		Msg("市场行情采集完成（md_* 表已刷新）")
+	return nil
+}
+
+// FetchWeatherActuals 把 md_weather_hydrology_daily（Open-Meteo 脚本已采）聚合到 weather_actuals。
+// 接通"死表"weather_actuals（此前唯一写入是 demo，下游 ActualsSummary 永远空）。
+// 步骤：
+//  1. 兜底补建 weather_locations 站点（防 0114 迁移时 md 表为空；同名站点取均值经纬度）
+//  2. ETL 最近 7 天的 md_weather_hydrology_daily → weather_actuals（UPSERT）
+//
+// min_temp/max_temp 留 NULL（md 表只有 temp_mean；下游 ActualsSummary 用 COALESCE 兜 0）。
+func FetchWeatherActuals(ctx context.Context, pool *db.Pool) error {
+	// 1. 兜底补建站点
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO weather_locations (name, latitude, longitude)
+		SELECT h.location_name, AVG(h.lat), AVG(h.lon)
+		FROM md_weather_hydrology_daily h
+		WHERE h.location_name IS NOT NULL
+		  AND NOT EXISTS (SELECT 1 FROM weather_locations w WHERE w.name = h.location_name)
+		GROUP BY h.location_name
+		ON CONFLICT (name) DO NOTHING`); err != nil {
+		return err
+	}
+
+	// 2. ETL 最近 7 天 md_weather → weather_actuals
+	tag, err := pool.Exec(ctx, `
+		INSERT INTO weather_actuals (location_name, date, avg_temp, humidity, wind_speed, precipitation)
+		SELECT h.location_name, h.obs_date, h.temp_mean, h.humidity_mean,
+		       h.wind_speed_10m_mean, h.precipitation_sum
+		FROM md_weather_hydrology_daily h
+		JOIN weather_locations w ON w.name = h.location_name
+		WHERE h.obs_date >= now() - interval '7 days'
+		ON CONFLICT (location_name, date) DO UPDATE SET
+		    avg_temp       = EXCLUDED.avg_temp,
+		    humidity       = EXCLUDED.humidity,
+		    wind_speed     = EXCLUDED.wind_speed,
+		    precipitation  = EXCLUDED.precipitation`)
+	if err != nil {
+		return err
+	}
+	log.Info().Int64("rows", tag.RowsAffected()).
+		Msg("weather_actuals 已刷新（从 md_weather_hydrology_daily 聚合）")
 	return nil
 }

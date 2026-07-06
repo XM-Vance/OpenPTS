@@ -5,26 +5,28 @@ package db
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // ─────────────── U1 零售月度结算 ───────────────
 
 type RetailMonthlySettle struct {
-	ID               string    `json:"id"`
-	ContractID       string    `json:"contract_id"`
-	CustomerName     string    `json:"customer_name,omitempty"`
-	OperatingMonth   string    `json:"operating_month"`
-	ContractEnergy   float64   `json:"contract_energy_mwh"`
-	ActualEnergy     float64   `json:"actual_energy_mwh"`
-	WeightedAvgPrice float64   `json:"weighted_avg_price"`
-	Receivable       float64   `json:"receivable_amount"`
-	Actual           float64   `json:"actual_amount"`
-	DeviationEnergy  float64   `json:"deviation_energy_mwh"`
-	PenaltyAmount    float64   `json:"penalty_amount"`
-	Note             *string   `json:"note,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID               string          `json:"id"`
+	ContractID       string          `json:"contract_id"`
+	CustomerName     string          `json:"customer_name,omitempty"`
+	OperatingMonth   string          `json:"operating_month"`
+	ContractEnergy   float64         `json:"contract_energy_mwh"`
+	ActualEnergy     float64         `json:"actual_energy_mwh"`
+	WeightedAvgPrice decimal.Decimal `json:"weighted_avg_price"` // P4: numeric(18,4)
+	Receivable       decimal.Decimal `json:"receivable_amount"`  // P4: numeric(18,4)
+	Actual           decimal.Decimal `json:"actual_amount"`      // P4: numeric(18,4)
+	DeviationEnergy  float64         `json:"deviation_energy_mwh"`
+	PenaltyAmount    decimal.Decimal `json:"penalty_amount"` // P4: numeric(18,4)
+	Note             *string         `json:"note,omitempty"`
+	CreatedAt        time.Time       `json:"created_at"`
 }
 
 type RetailMonthlyRepository struct{ pool *Pool }
@@ -82,7 +84,7 @@ func (r *RetailMonthlyRepository) List(ctx context.Context, contractID string, l
 }
 
 func (r *RetailMonthlyRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
@@ -91,8 +93,10 @@ func (r *RetailMonthlyRepository) GenerateDemo(ctx context.Context) (int, error)
 			return 0, fmt.Errorf("resolve default org: %w", err)
 		}
 	}
+	// B5：合同源查询必须按当前 org 过滤（原查询会拉全租户合同，再写入当前 org 的结算行）
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, purchasing_energy_mwh FROM retail_contracts WHERE status = 'active'`)
+		`SELECT id, purchasing_energy_mwh FROM retail_contracts
+		 WHERE status = 'active' AND org_id = $1::uuid`, orgID)
 	if err != nil {
 		return 0, err
 	}
@@ -118,16 +122,16 @@ func (r *RetailMonthlyRepository) GenerateDemo(ctx context.Context) (int, error)
 	for _, c := range contracts {
 		monthlyContract := c.energy / 12
 		for i := 0; i < 6; i++ {
-			t := time.Now().AddDate(0, -i, 0)
-			ym := t.Format("2006-01")
-			actual := monthlyContract * (0.85 + rand.Float64()*0.3)
-			price := 420 + rand.Float64()*40
-			receivable := actual * price
-			actualAmount := receivable * (0.97 + rand.Float64()*0.03)
+			ym := monthsAgoYM(i)
+			actual := monthlyContract * (0.85 + rand.Float64()*0.3) // 电量 float MWh
+			// P4: 金额 decimal（分项舍 4 位）；电量/偏差仍 float。
+			price := decimal.NewFromFloat(420 + rand.Float64()*40).Round(4)
+			receivable := decimal.NewFromFloat(actual).Mul(price).Round(4)
+			actualAmount := receivable.Mul(decimal.NewFromFloat(0.97 + rand.Float64()*0.03)).Round(4)
 			dev := actual - monthlyContract
-			penalty := 0.0
+			penalty := decimal.Zero
 			if dev < -monthlyContract*0.05 {
-				penalty = -dev * 50
+				penalty = decimal.NewFromFloat(-dev).Mul(decimal.NewFromInt(50)).Round(4)
 			}
 			if _, err := r.pool.Exec(ctx,
 				`INSERT INTO retail_monthly_settlement

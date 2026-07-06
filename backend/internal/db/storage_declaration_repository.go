@@ -5,22 +5,24 @@ package db
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // ─────────────── E6 储能申报策略 ───────────────
 
 type StorageDeclaration struct {
-	ID              string    `json:"id"`
-	StationID       string    `json:"station_id"`
-	StationName     string    `json:"station_name,omitempty"`
-	DeclaredDate    time.Time `json:"declared_date"`
-	ChargeMW        []float64 `json:"charge_mw"`
-	DischargeMW     []float64 `json:"discharge_mw"`
-	ExpectedRevenue float64   `json:"expected_revenue"`
-	StrategyNote    *string   `json:"strategy_note,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID              string          `json:"id"`
+	StationID       string          `json:"station_id"`
+	StationName     string          `json:"station_name,omitempty"`
+	DeclaredDate    time.Time       `json:"declared_date"`
+	ChargeMW        []float64       `json:"charge_mw"`
+	DischargeMW     []float64       `json:"discharge_mw"`
+	ExpectedRevenue decimal.Decimal `json:"expected_revenue"` // P4: numeric(18,4)
+	StrategyNote    *string         `json:"strategy_note,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
 }
 
 type StorageDeclarationRepository struct{ pool *Pool }
@@ -71,7 +73,7 @@ func (r *StorageDeclarationRepository) List(ctx context.Context, stationID strin
 }
 
 func (r *StorageDeclarationRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
@@ -121,12 +123,14 @@ func (r *StorageDeclarationRepository) GenerateDemo(ctx context.Context) (int, e
 					charge[p] = st.cap * 0.3
 				}
 			}
-			rev := 0.0
+			revF := 0.0
 			for p := 0; p < 96; p++ {
-				rev += discharge[p]*0.25*(500+rand.Float64()*200) -
+				revF += discharge[p]*0.25*(500+rand.Float64()*200) -
 					charge[p]*0.25*(200+rand.Float64()*80)
 			}
-			note := notes[rand.Intn(len(notes))]
+			// P4: 预期收益 decimal（96 点充放电收益积分，物理量为 float 输入）。
+			rev := decimal.NewFromFloat(revF).Round(4)
+			note := notes[rand.IntN(len(notes))]
 			if _, err := r.pool.Exec(ctx,
 				`INSERT INTO storage_declaration
 				   (station_id, declared_date, charge_mw, discharge_mw, expected_revenue, strategy_note, org_id)

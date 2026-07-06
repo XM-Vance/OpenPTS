@@ -1,5 +1,5 @@
 // 文档解析管线仓储：documents / document_extractions / document_applies。
-// 文档按省份(org)隔离：上传必须有具体活跃省；读取按活跃省过滤（总部「全部省」看全部）。
+// 文档按省份(org)隔离：上传必须有具体活跃组织；读取按活跃组织过滤（总部「全部省」看全部）。
 package db
 
 import (
@@ -102,12 +102,12 @@ func scanDocument(row interface{ Scan(...any) error }, withBody bool) (*Document
 	return &d, nil
 }
 
-// Create 新建文档（上传后）。写操作要求具体活跃省（总部「全部省」返回 ErrOrgRequired）。
+// Create 新建文档（上传后）。写操作要求具体活跃组织（总部「全部省」返回 ErrOrgRequired）。
 func (r *DocumentRepository) Create(ctx context.Context, filename, contentType string, size int64,
 	sha, sourceKind, originalKey string, uploadedBy *uuid.UUID) (*Document, error) {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return nil, ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return nil, err
 	}
 	row := r.pool.QueryRow(ctx, `
 		INSERT INTO documents (org_id, filename, content_type, size, sha256, source_kind,
@@ -137,7 +137,7 @@ func (r *DocumentRepository) FindBySha(ctx context.Context, sha string) (*Docume
 	return d, nil
 }
 
-// List 文档列表（按活跃省过滤；status/docType 可选；非管理员仅看自己上传的）。
+// List 文档列表（按活跃组织过滤；status/docType 可选；非管理员仅看自己上传的）。
 func (r *DocumentRepository) List(ctx context.Context, status, docType string, limit int, uploadedBy *uuid.UUID) ([]*Document, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
@@ -182,7 +182,7 @@ func (r *DocumentRepository) List(ctx context.Context, status, docType string, l
 	return list, rows.Err()
 }
 
-// Get 文档详情（含全文/表格/实体），按活跃省过滤；不存在或非本省返回 nil。
+// Get 文档详情（含全文/表格/实体），按活跃组织过滤；不存在或非本省返回 nil。
 func (r *DocumentRepository) Get(ctx context.Context, id uuid.UUID) (*Document, error) {
 	args := []any{id}
 	q := `SELECT ` + documentColumns + `, text_content, tables, entities FROM documents WHERE id=$1`

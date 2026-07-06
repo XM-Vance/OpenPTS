@@ -5,7 +5,7 @@ package db
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 )
 
@@ -43,19 +43,12 @@ func (r *ForecastBaseRepository) ListHolidays(ctx context.Context, year int) ([]
 	}
 	start := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.AddDate(1, 0, 0)
-	args := []any{start, end}
+	// holidays 是全国共享参考表（P2-5：0110 迁移已去掉 org_id），不按省过滤
 	q := `
 		SELECT id, holiday_date, name, kind, note, created_at
-		FROM holidays WHERE holiday_date >= $1 AND holiday_date < $2`
-	n := 3
-	org, scoped := OrgFilter(ctx)
-	if scoped {
-		args = append(args, org)
-		q += fmt.Sprintf(" AND org_id = $%d::uuid", n)
-		n++
-	}
-	q += " ORDER BY holiday_date ASC"
-	rows, err := r.pool.Query(ctx, q, args...)
+		FROM holidays WHERE holiday_date >= $1 AND holiday_date < $2
+		ORDER BY holiday_date ASC`
+	rows, err := r.pool.Query(ctx, q, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +95,7 @@ func (r *ForecastBaseRepository) ListTypicalCurves(ctx context.Context) ([]*Typi
 }
 
 func (r *ForecastBaseRepository) GenerateDemo(ctx context.Context) (int, int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
@@ -132,12 +125,13 @@ func (r *ForecastBaseRepository) GenerateDemo(ctx context.Context) (int, int, er
 	}
 	hCnt := 0
 	for _, h := range holidays {
+		// holidays 是全国共享参考表（P2-5），不写 org_id
 		if _, err := r.pool.Exec(ctx,
-			`INSERT INTO holidays (holiday_date, name, kind, org_id)
-			 VALUES ($1::date, $2, $3, $4::uuid)
-			 ON CONFLICT (org_id, holiday_date) DO UPDATE SET
+			`INSERT INTO holidays (holiday_date, name, kind)
+			 VALUES ($1::date, $2, $3)
+			 ON CONFLICT (holiday_date) DO UPDATE SET
 			   name = EXCLUDED.name, kind = EXCLUDED.kind`,
-			h.date, h.name, h.kind, orgID); err != nil {
+			h.date, h.name, h.kind); err != nil {
 			return hCnt, 0, err
 		}
 		hCnt++

@@ -73,9 +73,9 @@ func (r *StorageRepository) ListStations(ctx context.Context) ([]*StorageStation
 func (r *StorageRepository) UpsertStation(
 	ctx context.Context, name string, capacityMWh, maxPowerMW float64, location, status string,
 ) (*StorageStation, error) {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return nil, ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return nil, err
 	}
 	const q = `
 		INSERT INTO storage_stations (name, capacity_mwh, max_power_mw, location, status, org_id)
@@ -87,7 +87,7 @@ func (r *StorageRepository) UpsertStation(
 			status       = EXCLUDED.status
 		RETURNING ` + stationColumns
 	var s StorageStation
-	err := r.pool.QueryRow(ctx, q, name, capacityMWh, maxPowerMW, nullStr(location), status, org).
+	err = r.pool.QueryRow(ctx, q, name, capacityMWh, maxPowerMW, nullStr(location), status, org).
 		Scan(&s.ID, &s.Name, &s.CapacityMWh, &s.MaxPowerMW,
 			&s.Location, &s.Status, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
@@ -136,9 +136,9 @@ func (r *StorageRepository) UpsertOperation(
 	ctx context.Context, stationID uuid.UUID, d time.Time,
 	chargeMWh, dischargeMWh, revenue, avgSOC, cycles float64,
 ) error {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return err
 	}
 	const q = `
 		INSERT INTO storage_daily_operation
@@ -150,6 +150,6 @@ func (r *StorageRepository) UpsertOperation(
 			revenue       = EXCLUDED.revenue,
 			avg_soc       = EXCLUDED.avg_soc,
 			cycles        = EXCLUDED.cycles`
-	_, err := r.pool.Exec(ctx, q, stationID, d, chargeMWh, dischargeMWh, revenue, avgSOC, cycles, org)
+	_, err = r.pool.Exec(ctx, q, stationID, d, chargeMWh, dischargeMWh, revenue, avgSOC, cycles, org)
 	return err
 }

@@ -119,7 +119,7 @@ func (h *SearchHandler) Search(c *gin.Context) {
 }
 
 func (h *SearchHandler) searchCustomers(ctx context.Context, keyword, org string, scoped bool) ([]searchCustomer, error) {
-	q := `SELECT id::text, user_name, COALESCE(location, '') AS location FROM customers WHERE user_name ILIKE $1`
+	q := `SELECT id::text, user_name, COALESCE(location, '') AS location FROM customers WHERE user_name ILIKE $1 AND lifecycle_stage NOT IN ('intent','lead')`
 	args := []any{keyword}
 	if scoped {
 		q += fmt.Sprintf(" AND org_id = $%d::uuid", len(args)+1)
@@ -198,14 +198,15 @@ func (h *SearchHandler) searchDocuments(ctx context.Context, keyword, org string
 }
 
 func (h *SearchHandler) searchIntentCustomers(ctx context.Context, keyword, org string, scoped bool) ([]searchIntentCustomer, error) {
-	q := `SELECT id::text, customer_name AS company_name, status
-		FROM intent_customers WHERE customer_name ILIKE $1`
+	// Phase 1b：意向客户已并入统一 customers(stage='intent')。
+	q := `SELECT id::text, user_name AS company_name, 'pending' AS status
+		FROM customers WHERE lifecycle_stage='intent' AND user_name ILIKE $1`
 	args := []any{keyword}
 	if scoped {
 		q += fmt.Sprintf(" AND org_id = $%d::uuid", len(args)+1)
 		args = append(args, org)
 	}
-	q += " ORDER BY customer_name LIMIT 20"
+	q += " ORDER BY user_name LIMIT 20"
 
 	rows, err := h.pool.Query(ctx, q, args...)
 	if err != nil {

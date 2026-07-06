@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ptis/backend/internal/db"
 	"github.com/gin-gonic/gin"
-	"github.com/xuri/excelize/v2"
+	"github.com/ptis/backend/internal/db"
 	"github.com/rs/zerolog/log"
+	"github.com/xuri/excelize/v2"
 )
 
 type ExportHandler struct {
@@ -109,11 +109,11 @@ func (h *ExportHandler) fetch(ctx context.Context, resource string) ([]string, [
 			rows = append(rows, []string{
 				m.OperatingMonth,
 				fmtFloat(m.SettledEnergyMWh),
-				fmtFloat(m.EnergyFee),
-				fmtFloat(m.CapacityFee),
-				fmtFloat(m.AncillaryFee),
-				fmtFloat(m.PolicySubsidy),
-				fmtFloat(m.TotalFee),
+				m.EnergyFee.StringFixed(2), // P4: 金额 decimal
+				m.CapacityFee.StringFixed(2),
+				m.AncillaryFee.StringFixed(2),
+				m.PolicySubsidy.StringFixed(2),
+				m.TotalFee.StringFixed(2),
 				m.Version,
 			})
 		}
@@ -130,11 +130,11 @@ func (h *ExportHandler) fetch(ctx context.Context, resource string) ([]string, [
 			rows = append(rows, []string{
 				p.ContractID,
 				p.PriceDate.Format("2006-01-02"),
-				fmtFloat(p.UnitPrice),
+				p.UnitPrice.StringFixed(2), // P4: 金额 decimal
 				fmtFloat(p.DailyEnergy),
-				fmtFloat(p.DailyAmount),
+				p.DailyAmount.StringFixed(2),
 				fmtFloat(p.CumulativeEnergy),
-				fmtFloat(p.CumulativeAmount),
+				p.CumulativeAmount.StringFixed(2),
 			})
 		}
 		return headers, rows, nil

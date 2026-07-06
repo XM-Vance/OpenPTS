@@ -29,6 +29,18 @@ func (h *TradeStrategyHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": list})
 }
 
+// Monthly 月度策略视图：返回真策略列表（复用 List，供前端 /trade/strategies/monthly 调用，
+// 替代原 stub 空态）。contract-curve / d2 视图暂保留 stub（需额外数据模型）。
+func (h *TradeStrategyHandler) Monthly(c *gin.Context) {
+	list, err := h.repo.List(c.Request.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("操作失败")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请稍后重试"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": list})
+}
+
 type createStrategyReq struct {
 	StrategyName string          `json:"strategy_name" binding:"required"`
 	StrategyType string          `json:"strategy_type" binding:"required"`

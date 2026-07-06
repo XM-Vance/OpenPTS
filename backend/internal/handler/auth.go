@@ -23,7 +23,9 @@ func NewAuthHandler(users *db.UserRepository, jwt *auth.JWTService, permSvc *aut
 
 type LoginRequest struct {
 	Username string `json:"username" binding:"required,min=2,max=64"`
-	Password string `json:"password" binding:"required,min=4,max=128"`
+	// 密码最小长度与 ChangePassword 一致（min=7）。收紧 min=4 的旧策略。
+	// 注意：存量 4-6 位弱密码账号需先经改密流程升级，否则会登录失败。
+	Password string `json:"password" binding:"required,min=7,max=128"`
 }
 
 type LoginResponse struct {

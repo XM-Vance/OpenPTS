@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 )
 
@@ -111,7 +111,7 @@ func (r *AccuracyRepository) Summary(ctx context.Context, days int) ([]*Accuracy
 }
 
 func (r *AccuracyRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
@@ -138,13 +138,13 @@ func (r *AccuracyRepository) GenerateDemo(ctx context.Context) (int, error) {
 			rmse := math.Abs(actual - predicted)
 			if _, err := r.pool.Exec(ctx, `
 				INSERT INTO forecast_accuracy
-				(forecast_target, forecast_date, predicted_value, actual_value, mape, rmse, model_version, org_id)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8::uuid)
+				(forecast_target, forecast_date, predicted_value, actual_value, mape, rmse, model_version, org_id, is_demo)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8::uuid, TRUE)
 				ON CONFLICT (org_id, forecast_target, forecast_date) DO UPDATE SET
 				  predicted_value = EXCLUDED.predicted_value,
 				  actual_value = EXCLUDED.actual_value,
 				  mape = EXCLUDED.mape, rmse = EXCLUDED.rmse,
-				  model_version = EXCLUDED.model_version`,
+				  model_version = EXCLUDED.model_version, is_demo = TRUE`,
 				t.name, d, predicted, actual, mape, rmse, t.version, orgID); err != nil {
 				return cnt, err
 			}

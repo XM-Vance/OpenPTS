@@ -18,9 +18,10 @@ func (h *MiscStubHandler) EmptyContainer(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": []any{}, "summary": gin.H{}, "total": 0})
 }
 
-// 导入类（POST）：返回已导入 0 条
+// 导入类（POST）：返回 501 而非假成功 {ok:true, imported:0}，
+// 避免前端误判导入成功（实际未实现，0 条入库）。
 func (h *MiscStubHandler) EmptyImport(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"ok": true, "imported": 0, "message": "暂未实现导入"})
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "该导入功能尚未实现"})
 }
 
 // 日前复盘交易日列表

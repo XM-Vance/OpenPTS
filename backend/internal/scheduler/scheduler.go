@@ -1,5 +1,9 @@
 // 进程内调度器：基于 robfig/cron/v3，按 scheduled_jobs.cron_expr 触发已注册的 handler。
 // handler 名通过 scheduled_jobs.handler 字段绑定。
+//
+// P0-D2 互斥：runOne 用 inflight sync.Map 保证同一 job 不并发执行。
+// P0-D3 重试：按 scheduled_jobs.max_retries 失败重试（指数退避）。
+// P0-D4 交易日历：trade_day_only=true 的 job 用 tradeDaySchedule 跳过周末+法定假日。
 package scheduler
 
 import (
@@ -30,6 +34,8 @@ type Scheduler struct {
 	mu        sync.Mutex
 	entryByID map[string]cron.EntryID // jobID → cron.EntryID
 	pub       EventPublisher
+	inflight  sync.Map // jobID → struct{}：同一 job 执行互斥（P0-D2）
+	holidays  *db.ForecastBaseRepository // 交易日历数据源（P0-D4）
 }
 
 func New(repo *db.SchedulerRepository, pool *db.Pool) *Scheduler {
@@ -43,6 +49,9 @@ func New(repo *db.SchedulerRepository, pool *db.Pool) *Scheduler {
 		entryByID: map[string]cron.EntryID{},
 	}
 }
+
+// SetHolidaysRepo 注入节假日数据源，供 tradeDaySchedule 判断交易日（P0-D4）。
+func (s *Scheduler) SetHolidaysRepo(r *db.ForecastBaseRepository) { s.holidays = r }
 
 // SetPublisher 注入事件发布器（main.go 在 New 后调用）。
 func (s *Scheduler) SetPublisher(p EventPublisher) { s.pub = p }
@@ -84,9 +93,23 @@ func (s *Scheduler) addEntry(j *db.ScheduledJob) error {
 	}
 	jobID := j.ID
 	jobName := j.Name
-	entryID, err := s.cron.AddFunc(j.CronExpr, func() {
-		s.runOne(jobID, jobName, fn, "cron")
-	})
+	maxRetries := j.MaxRetries
+	run := func() {
+		s.runOne(jobID, jobName, fn, "cron", maxRetries)
+	}
+	// trade_day_only：用自定义 Schedule 跳过周末+法定假日（P0-D4）
+	if j.TradeDayOnly {
+		sched, err := newTradeDaySchedule(j.CronExpr, s.holidays)
+		if err != nil {
+			return fmt.Errorf("交易日历调度初始化失败：%w", err)
+		}
+		entryID := s.cron.Schedule(sched, cron.FuncJob(run))
+		s.mu.Lock()
+		s.entryByID[jobID] = entryID
+		s.mu.Unlock()
+		return nil
+	}
+	entryID, err := s.cron.AddFunc(j.CronExpr, run)
 	if err != nil {
 		return fmt.Errorf("cron 表达式解析失败：%w", err)
 	}
@@ -106,7 +129,16 @@ func (s *Scheduler) removeEntry(jobID string) {
 }
 
 // runOne 执行一次任务，写 job_runs + 更新 scheduled_jobs.last_*。
-func (s *Scheduler) runOne(jobID, jobName string, fn JobFunc, trigger string) {
+// P0-D2：inflight 互斥——同一 jobID 若已有实例在跑，直接跳过（防并发执行）。
+// P0-D3：按 maxRetries 失败重试，指数退避（2s, 4s, 8s...）。
+func (s *Scheduler) runOne(jobID, jobName string, fn JobFunc, trigger string, maxRetries int) {
+	// 互斥：LoadOrStore 原子占位，已有实例在跑则跳过
+	if _, running := s.inflight.LoadOrStore(jobID, struct{}{}); running {
+		log.Warn().Str("job", jobName).Msg("任务已在执行中，跳过本次触发")
+		return
+	}
+	defer s.inflight.Delete(jobID)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	runID, err := s.repo.StartRun(ctx, jobID, trigger)
@@ -115,15 +147,36 @@ func (s *Scheduler) runOne(jobID, jobName string, fn JobFunc, trigger string) {
 		return
 	}
 	start := time.Now()
-	jobErr := fn(ctx, s.pool)
+	// 执行 + 重试：首次 + maxRetries 次，指数退避
+	var jobErr error
+	attempts := maxRetries + 1
+	for i := 0; i < attempts; i++ {
+		jobErr = fn(ctx, s.pool)
+		if jobErr == nil || ctx.Err() != nil {
+			break // 成功 或 上下文已取消（如停机），不再重试
+		}
+		if i < attempts-1 {
+			backoff := time.Duration(1<<(i+1)) * time.Second // 2s, 4s, 8s...
+			log.Warn().Err(jobErr).Str("job", jobName).Int("attempt", i+1).
+				Dur("backoff", backoff).Msg("任务失败，准备重试")
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+			}
+			if ctx.Err() != nil {
+				break // 退避期间被取消，停止重试
+			}
+		}
+	}
 	dur := int(time.Since(start) / time.Millisecond)
 	status := "success"
 	var errStr *string
 	if jobErr != nil {
 		status = "failed"
-		s := jobErr.Error()
-		errStr = &s
-		log.Error().Err(jobErr).Str("job", jobName).Int("ms", dur).Msg("任务执行失败")
+		e := jobErr.Error()
+		errStr = &e
+		log.Error().Err(jobErr).Str("job", jobName).Int("ms", dur).
+			Int("attempts", attempts).Msg("任务执行失败（已耗尽重试")
 	} else {
 		log.Info().Str("job", jobName).Int("ms", dur).Msg("任务执行成功")
 	}
@@ -140,7 +193,7 @@ func (s *Scheduler) runOne(jobID, jobName string, fn JobFunc, trigger string) {
 	}
 }
 
-// TriggerByID 手工触发一次。
+// TriggerByID 手工触发一次（忽略 trade_day_only，手动触发总是执行）。
 func (s *Scheduler) TriggerByID(ctx context.Context, jobID string) error {
 	j, err := s.repo.GetByID(ctx, jobID)
 	if err != nil {
@@ -150,7 +203,7 @@ func (s *Scheduler) TriggerByID(ctx context.Context, jobID string) error {
 	if !ok {
 		return fmt.Errorf("未注册 handler: %s", j.Handler)
 	}
-	go s.runOne(j.ID, j.Name, fn, "manual")
+	go s.runOne(j.ID, j.Name, fn, "manual", j.MaxRetries)
 	return nil
 }
 

@@ -13,9 +13,18 @@ var pricingApprovableFields = map[string]string{
 	"sort_order":   "sort_order",
 }
 
-// UpdatePricingField 白名单单字段更新。
+// UpdatePricingField 白名单单字段更新（用连接池，非事务）。
 // id 是定价模型的 code。
 func (r *RetailRepository) UpdatePricingField(ctx context.Context, code, field, value string) (int64, error) {
+	return r.updatePricingFieldOn(ctx, r.pool, code, field, value)
+}
+
+// UpdatePricingFieldTx 白名单单字段更新；在指定事务上执行（Approve 单事务原子化用，P0-B2）。
+func (r *RetailRepository) UpdatePricingFieldTx(ctx context.Context, ex Executor, code, field, value string) (int64, error) {
+	return r.updatePricingFieldOn(ctx, ex, code, field, value)
+}
+
+func (r *RetailRepository) updatePricingFieldOn(ctx context.Context, ex Executor, code, field, value string) (int64, error) {
 	col, ok := pricingApprovableFields[field]
 	if !ok {
 		return 0, fmt.Errorf("不允许通过审批修改的字段: %s", field)
@@ -39,7 +48,7 @@ func (r *RetailRepository) UpdatePricingField(ctx context.Context, code, field, 
 		arg = value
 		q = fmt.Sprintf(`UPDATE pricing_models SET %s = $1, updated_at = now() WHERE code = $2`, col)
 	}
-	tag, err := r.pool.Exec(ctx, q, arg, code)
+	tag, err := ex.Exec(ctx, q, arg, code)
 	if err != nil {
 		return 0, err
 	}

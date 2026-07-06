@@ -7,17 +7,19 @@ import (
 )
 
 type ScheduledJob struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Description *string    `json:"description,omitempty"`
-	CronExpr    string     `json:"cron_expr"`
-	Handler     string     `json:"handler"`
-	Enabled     bool       `json:"enabled"`
-	LastRunAt   *time.Time `json:"last_run_at,omitempty"`
-	LastStatus  *string    `json:"last_status,omitempty"`
-	LastError   *string    `json:"last_error,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID           string     `json:"id"`
+	Name         string     `json:"name"`
+	Description  *string    `json:"description,omitempty"`
+	CronExpr     string     `json:"cron_expr"`
+	Handler      string     `json:"handler"`
+	Enabled      bool       `json:"enabled"`
+	MaxRetries   int        `json:"max_retries"`
+	TradeDayOnly bool       `json:"trade_day_only"`
+	LastRunAt    *time.Time `json:"last_run_at,omitempty"`
+	LastStatus   *string    `json:"last_status,omitempty"`
+	LastError    *string    `json:"last_error,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 type JobRun struct {
@@ -42,6 +44,7 @@ func NewSchedulerRepository(pool *Pool) *SchedulerRepository {
 
 func (r *SchedulerRepository) ListJobs(ctx context.Context) ([]*ScheduledJob, error) {
 	const q = `SELECT id, name, description, cron_expr, handler, enabled,
+		max_retries, trade_day_only,
 		last_run_at, last_status, last_error, created_at, updated_at
 		FROM scheduled_jobs ORDER BY name ASC`
 	rows, err := r.pool.Query(ctx, q)
@@ -53,7 +56,8 @@ func (r *SchedulerRepository) ListJobs(ctx context.Context) ([]*ScheduledJob, er
 	for rows.Next() {
 		var j ScheduledJob
 		if err := rows.Scan(&j.ID, &j.Name, &j.Description, &j.CronExpr, &j.Handler,
-			&j.Enabled, &j.LastRunAt, &j.LastStatus, &j.LastError,
+			&j.Enabled, &j.MaxRetries, &j.TradeDayOnly,
+			&j.LastRunAt, &j.LastStatus, &j.LastError,
 			&j.CreatedAt, &j.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -64,12 +68,13 @@ func (r *SchedulerRepository) ListJobs(ctx context.Context) ([]*ScheduledJob, er
 
 func (r *SchedulerRepository) GetByName(ctx context.Context, name string) (*ScheduledJob, error) {
 	const q = `SELECT id, name, description, cron_expr, handler, enabled,
+		max_retries, trade_day_only,
 		last_run_at, last_status, last_error, created_at, updated_at
 		FROM scheduled_jobs WHERE name = $1`
 	var j ScheduledJob
 	if err := r.pool.QueryRow(ctx, q, name).Scan(&j.ID, &j.Name, &j.Description,
-		&j.CronExpr, &j.Handler, &j.Enabled, &j.LastRunAt, &j.LastStatus,
-		&j.LastError, &j.CreatedAt, &j.UpdatedAt); err != nil {
+		&j.CronExpr, &j.Handler, &j.Enabled, &j.MaxRetries, &j.TradeDayOnly,
+		&j.LastRunAt, &j.LastStatus, &j.LastError, &j.CreatedAt, &j.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &j, nil
@@ -77,12 +82,13 @@ func (r *SchedulerRepository) GetByName(ctx context.Context, name string) (*Sche
 
 func (r *SchedulerRepository) GetByID(ctx context.Context, id string) (*ScheduledJob, error) {
 	const q = `SELECT id, name, description, cron_expr, handler, enabled,
+		max_retries, trade_day_only,
 		last_run_at, last_status, last_error, created_at, updated_at
 		FROM scheduled_jobs WHERE id = $1`
 	var j ScheduledJob
 	if err := r.pool.QueryRow(ctx, q, id).Scan(&j.ID, &j.Name, &j.Description,
-		&j.CronExpr, &j.Handler, &j.Enabled, &j.LastRunAt, &j.LastStatus,
-		&j.LastError, &j.CreatedAt, &j.UpdatedAt); err != nil {
+		&j.CronExpr, &j.Handler, &j.Enabled, &j.MaxRetries, &j.TradeDayOnly,
+		&j.LastRunAt, &j.LastStatus, &j.LastError, &j.CreatedAt, &j.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &j, nil

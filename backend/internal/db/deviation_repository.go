@@ -5,24 +5,26 @@ package db
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // ─────────────── 偏差结算 ───────────────
 
 type DeviationSettlement struct {
-	ID              string    `json:"id"`
-	OperatingDate   time.Time `json:"operating_date"`
-	DeclaredEnergy  float64   `json:"declared_energy_mwh"`
-	ActualEnergy    float64   `json:"actual_energy_mwh"`
-	DeviationEnergy float64   `json:"deviation_energy_mwh"`
-	DeviationRate   float64   `json:"deviation_rate"`
-	DeviationCost   float64   `json:"deviation_cost"`
-	PenaltyCost     float64   `json:"penalty_cost"`
-	TotalSettlement float64   `json:"total_settlement"`
-	Category        string    `json:"category"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID              string          `json:"id"`
+	OperatingDate   time.Time       `json:"operating_date"`
+	DeclaredEnergy  float64         `json:"declared_energy_mwh"`
+	ActualEnergy    float64         `json:"actual_energy_mwh"`
+	DeviationEnergy float64         `json:"deviation_energy_mwh"`
+	DeviationRate   float64         `json:"deviation_rate"`
+	DeviationCost   decimal.Decimal `json:"deviation_cost"`   // P4: numeric(18,4)，金额精确
+	PenaltyCost     decimal.Decimal `json:"penalty_cost"`     // P4: numeric(18,4)
+	TotalSettlement decimal.Decimal `json:"total_settlement"` // P4: numeric(18,4)
+	Category        string          `json:"category"`
+	CreatedAt       time.Time       `json:"created_at"`
 }
 
 type DeviationRepository struct{ pool *Pool }
@@ -89,7 +91,7 @@ func (r *DeviationRepository) Summary(ctx context.Context, days int) ([]*Deviati
 	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
 		SELECT category,
 		       SUM(deviation_energy_mwh)::float8,
-		       SUM(total_settlement)::float8,
+		       SUM(total_settlement)::numeric,
 		       AVG(deviation_rate)::float8,
 		       COUNT(*)
 		FROM deviation_settlement
@@ -113,15 +115,15 @@ func (r *DeviationRepository) Summary(ctx context.Context, days int) ([]*Deviati
 }
 
 type DeviationSummary struct {
-	Category             string  `json:"category"`
-	TotalDeviationEnergy float64 `json:"total_deviation_energy_mwh"`
-	TotalCost            float64 `json:"total_cost"`
-	AvgDeviationRate     float64 `json:"avg_deviation_rate"`
-	Count                int     `json:"count"`
+	Category             string          `json:"category"`
+	TotalDeviationEnergy float64         `json:"total_deviation_energy_mwh"`
+	TotalCost            decimal.Decimal `json:"total_cost"` // P4: SUM(numeric) 精确，不再 ::float8
+	AvgDeviationRate     float64         `json:"avg_deviation_rate"`
+	Count                int             `json:"count"`
 }
 
 func (r *DeviationRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
@@ -142,20 +144,22 @@ func (r *DeviationRepository) GenerateDemo(ctx context.Context) (int, error) {
 			}
 			actual := declared + deviation
 			rate := deviation / declared * 100
-			devCost := deviation * (350 + rand.Float64()*100)
-			penalty := 0.0
+			// P4: 金额用 decimal 运算，分项先舍入到列精度(4 位)，再求和——
+			// 使 total == devCost + penalty 在 numeric(18,4) 下精确成立（账务口径：先舍分项后汇总）。
+			devCost := decimal.NewFromFloat(deviation).Mul(decimal.NewFromFloat(350 + rand.Float64()*100)).Round(4)
+			penalty := decimal.Zero
 			if rate > 5 || rate < -5 {
 				// 考核费按偏差「绝对值」计,恒非负;此前用带符号 deviation,
 				// 负偏差(少发/少用)会算出负考核费=倒贴奖励,与预结算 |dev| 口径不一致。
 				// 注:系数 50 维持原值(预结算用 100,两者是否统一属业务规则,另议)。
-				penalty = absF(deviation) * 50
+				penalty = decimal.NewFromFloat(absF(deviation)).Mul(decimal.NewFromInt(50)).Round(4)
 			}
-			total := devCost + penalty
+			total := devCost.Add(penalty)
 			if _, err := r.pool.Exec(ctx,
 				`INSERT INTO deviation_settlement
 				   (operating_date, declared_energy_mwh, actual_energy_mwh, deviation_energy_mwh,
-				    deviation_rate, deviation_cost, penalty_cost, total_settlement, category, org_id)
-				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::uuid)
+				    deviation_rate, deviation_cost, penalty_cost, total_settlement, category, org_id, is_demo)
+				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::uuid,TRUE)
 				 ON CONFLICT (org_id, operating_date, category) DO UPDATE SET
 				   declared_energy_mwh = EXCLUDED.declared_energy_mwh,
 				   actual_energy_mwh = EXCLUDED.actual_energy_mwh,
@@ -163,7 +167,7 @@ func (r *DeviationRepository) GenerateDemo(ctx context.Context) (int, error) {
 				   deviation_rate = EXCLUDED.deviation_rate,
 				   deviation_cost = EXCLUDED.deviation_cost,
 				   penalty_cost = EXCLUDED.penalty_cost,
-				   total_settlement = EXCLUDED.total_settlement`,
+				   total_settlement = EXCLUDED.total_settlement, is_demo = TRUE`,
 				d, declared, actual, deviation, rate, devCost, penalty, total, cat, orgID); err != nil {
 				return cnt, err
 			}

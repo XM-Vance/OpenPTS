@@ -35,7 +35,7 @@ func main() {
 	log.Info().
 		Str("env", cfg.Environment).
 		Str("port", cfg.Port).
-		Msg("PTIS 后端启动中")
+		Msg("OpenPTS 后端启动中")
 
 	pool, err := db.New(ctx, cfg.DatabaseURL)
 	if err != nil {
@@ -108,6 +108,9 @@ func main() {
 	vppRepo := db.NewVPPRepository(pool)
 	biddingRepo := db.NewBiddingRepository(pool)
 	loadCharRepo := db.NewLoadCharacteristicsRepository(pool)
+	loadCharExtRepo := db.NewLoadCharacteristicsExtRepository(pool)
+	loadDataRepo := db.NewLoadDataRepository(pool)
+	priceTrendRepo := db.NewPriceTrendRepository(pool)
 	custAnalysisRepo := db.NewCustomerAnalysisRepository(pool)
 	tradeStrategyRepo := db.NewTradeStrategyRepository(pool)
 	solarRepo := db.NewSolarRepository(pool)
@@ -132,32 +135,32 @@ func main() {
 		return fp, err
 	}
 
-	approvalRegistry.Register("retail_contracts", func(ctx context.Context, resourceID string, payload json.RawMessage) error {
+	approvalRegistry.Register("retail_contracts", func(ctx context.Context, ex approval.Executor, resourceID string, payload json.RawMessage) error {
 		fp, err := parseFP(payload)
 		if err != nil || fp.Field == "" {
 			return err
 		}
-		_, err = retailRepo.UpdateContractField(ctx, resourceID, fp.Field, fp.New)
+		_, err = retailRepo.UpdateContractFieldTx(ctx, ex, resourceID, fp.Field, fp.New)
 		return err
 	})
 
 	// T1 customers applier
-	approvalRegistry.Register("customers", func(ctx context.Context, resourceID string, payload json.RawMessage) error {
+	approvalRegistry.Register("customers", func(ctx context.Context, ex approval.Executor, resourceID string, payload json.RawMessage) error {
 		fp, err := parseFP(payload)
 		if err != nil || fp.Field == "" {
 			return err
 		}
-		_, err = customerRepo.UpdateCustomerField(ctx, resourceID, fp.Field, fp.New)
+		_, err = customerRepo.UpdateCustomerFieldTx(ctx, ex, resourceID, fp.Field, fp.New)
 		return err
 	})
 
 	// T2 pricing_models applier（resource_id 是 code，不是 uuid）
-	approvalRegistry.Register("pricing_models", func(ctx context.Context, resourceID string, payload json.RawMessage) error {
+	approvalRegistry.Register("pricing_models", func(ctx context.Context, ex approval.Executor, resourceID string, payload json.RawMessage) error {
 		fp, err := parseFP(payload)
 		if err != nil || fp.Field == "" {
 			return err
 		}
-		_, err = retailRepo.UpdatePricingField(ctx, resourceID, fp.Field, fp.New)
+		_, err = retailRepo.UpdatePricingFieldTx(ctx, ex, resourceID, fp.Field, fp.New)
 		return err
 	})
 	objStore, err := storage.New()
@@ -166,13 +169,17 @@ func main() {
 	}
 	permSvc := auth.NewPermissionService(permRepo)
 
-	// 进程内调度器：注册 4 个内置 handler 后启动。
+	jwtSvc := auth.NewJWTService(cfg.JWTSecret, cfg.JWTTTL)
+
+	// 进程内调度器：注册内置 handler 后启动。
 	sched := scheduler.New(schedulerRepo, pool)
 	sched.SetPublisher(sseHub) // 任务执行后广播 SSE
+	sched.SetHolidaysRepo(forecastBaseRepo) // 交易日历数据源（P0-D4）
 	sched.Register("cleanup_tokens", scheduler.CleanupTokens)
 	sched.Register("aggregate_daily_active", scheduler.AggregateDailyActive)
 	sched.Register("refresh_dashboard_kpi", scheduler.RefreshDashboardKPI)
 	sched.Register("expire_contracts", scheduler.ExpireContracts)
+	sched.Register("fetch_market_data", scheduler.FetchMarketData)
 	if err := sched.Start(ctx); err != nil {
 		log.Fatal().Err(err).Msg("启动调度器失败")
 	}
@@ -180,7 +187,7 @@ func main() {
 	deps := &server.Deps{
 		Config:               cfg,
 		Pool:                 pool,
-		JWT:                  auth.NewJWTService(cfg.JWTSecret, cfg.JWTTTL),
+		JWT:                  jwtSvc,
 		UserRepo:             userRepo,
 		RoleRepo:             roleRepo,
 		PermRepo:             permRepo,
@@ -237,6 +244,9 @@ func main() {
 		VPPRepo:              vppRepo,
 		BiddingRepo:          biddingRepo,
 		LoadCharRepo:         loadCharRepo,
+		LoadCharExtRepo:      loadCharExtRepo,
+		LoadDataRepo:         loadDataRepo,
+		PriceTrendRepo:       priceTrendRepo,
 		CustAnalysisRepo:     custAnalysisRepo,
 		TradeStrategyRepo:    tradeStrategyRepo,
 		ObjectStore:          objStore,

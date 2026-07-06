@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -32,7 +33,13 @@ func (h *PreSettleHandler) List(c *gin.Context) {
 func (h *PreSettleHandler) Get(c *gin.Context) {
 	p, err := h.repo.Get(c.Request.Context(), c.Param("date"))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "未找到该日预结算"})
+		// B9：仅「记录不存在」返回 404，其余 DB 错误返回 500（不再吞掉真实失败）
+		if errors.Is(err, db.ErrPreSettleNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "未找到该日预结算"})
+			return
+		}
+		log.Error().Err(err).Msg("预结算查询失败")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请稍后重试"})
 		return
 	}
 	c.JSON(http.StatusOK, p)

@@ -44,8 +44,9 @@ func (h *TradeStubHandler) MonthlyContractEarnings(c *gin.Context) {
 }
 
 // POST /trade/monthly-review/recalculate
+// 重算占位：返回 501 而非假成功 {ok:true}，避免前端误判重算已完成。
 func (h *TradeStubHandler) MonthlyRecalculate(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"ok": true, "calc_status": "empty", "calc_message": "暂无可重算数据"})
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "月度复盘重算尚未实现"})
 }
 
 // ── 滚动交易 ──

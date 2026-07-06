@@ -274,3 +274,75 @@ func (r *MarketDataRepository) Overview(ctx context.Context) (map[string]interfa
 	}
 	return result, nil
 }
+
+// ── 统一时序表 md_time_series（EAV 模型）读写 ──
+//
+// 这是 md_* 多表扩展性问题的目标架构（审查报告 3.7）。
+// 与上方旧方法（读 30 张 md_* 表）并存，互不影响——旧的按表名查询继续可用，
+// 新品种逐步迁到本表。详见 docs/md_timeseries_migration.md。
+
+// TimeSeriesPoint EAV 时序的一个观测点。
+type TimeSeriesPoint struct {
+	InstrumentCode string             `json:"instrument_code"`
+	Category       string             `json:"category"`
+	ObsDate        time.Time          `json:"obs_date"`
+	Frequency      string             `json:"frequency"`
+	Value          *float64           `json:"value"`
+	Attrs          map[string]any     `json:"attrs,omitempty"`
+	Source         string             `json:"source,omitempty"`
+}
+
+// QuerySeries 从统一时序表读取某品种的时序（按日期升序）。
+// code 为品种代码（如 cu/gdp/wti），limit 为最多返回点数（<=0 表示默认 1000）。
+func (r *MarketDataRepository) QuerySeries(ctx context.Context, code string, limit int) ([]TimeSeriesPoint, error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT instrument_code, category, obs_date, frequency, value, attrs, source
+		FROM md_time_series
+		WHERE instrument_code = $1
+		ORDER BY obs_date ASC
+		LIMIT $2`, code, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TimeSeriesPoint
+	for rows.Next() {
+		var p TimeSeriesPoint
+		if err := rows.Scan(&p.InstrumentCode, &p.Category, &p.ObsDate, &p.Frequency,
+			&p.Value, &p.Attrs, &p.Source); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// WriteSeries 向统一时序表写入观测点（UPSERT：同 code+date+frequency 覆盖）。
+// 用于后续把新品种或迁移自旧表的数据写入 EAV 存储。
+func (r *MarketDataRepository) WriteSeries(ctx context.Context, points []TimeSeriesPoint) (int64, error) {
+	const q = `
+		INSERT INTO md_time_series (instrument_code, category, obs_date, frequency, value, attrs, source)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (instrument_code, obs_date, frequency)
+		DO UPDATE SET category = EXCLUDED.category,
+		              value    = EXCLUDED.value,
+		              attrs    = EXCLUDED.attrs,
+		              source   = EXCLUDED.source`
+	var n int64
+	for _, p := range points {
+		freq := p.Frequency
+		if freq == "" {
+			freq = "daily"
+		}
+		if _, err := r.pool.Exec(ctx, q,
+			p.InstrumentCode, p.Category, p.ObsDate, freq, p.Value, p.Attrs, p.Source); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}

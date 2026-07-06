@@ -4,10 +4,16 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
+
+// ErrPreSettleNotFound 预结算记录不存在（B9：与 DB 连接错误等真实失败区分）。
+var ErrPreSettleNotFound = errors.New("预结算记录不存在")
 
 // ─────────────── U2 预结算明细 ───────────────
 
@@ -93,13 +99,17 @@ func (r *PreSettleRepository) Get(ctx context.Context, date string) (*PreSettleD
 			&p.DeviationRatio, &p.EnergyRevenue, &p.DeviationPenalty,
 			&p.FinalAmount, &p.CreatedAt)
 	if err != nil {
+		// B9：区分「记录不存在」（404）与真实 DB 错误（500），避免吞掉所有错误为 404
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrPreSettleNotFound
+		}
 		return nil, err
 	}
 	return &p, nil
 }
 
 func (r *PreSettleRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {

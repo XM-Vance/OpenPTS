@@ -31,6 +31,18 @@ func (h *RollingTradeHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": list})
 }
 
+// Statistics 滚动撮合交易统计（买入/卖出/净/月度总量）。
+func (h *RollingTradeHandler) Statistics(c *gin.Context) {
+	days, _ := strconv.Atoi(c.DefaultQuery("days", "7"))
+	s, err := h.repo.Statistics(c.Request.Context(), days)
+	if err != nil {
+		log.Error().Err(err).Msg("操作失败")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请稍后重试"})
+		return
+	}
+	c.JSON(http.StatusOK, s)
+}
+
 func (h *RollingTradeHandler) GenerateDemoData(c *gin.Context) {
 	n, err := h.repo.GenerateDemo(c.Request.Context())
 	if err != nil {

@@ -54,8 +54,17 @@ func parseStatus(s string) (any, error) {
 	return nil, fmt.Errorf("%w: status 必须是 active/expired/terminated", ErrInvalidValue)
 }
 
-// UpdateContractField 单字段更新；返回行影响数。
+// UpdateContractField 单字段更新；返回行影响数（用连接池，非事务）。
 func (r *RetailRepository) UpdateContractField(ctx context.Context, id, field, value string) (int64, error) {
+	return r.updateContractFieldOn(ctx, r.pool, id, field, value)
+}
+
+// UpdateContractFieldTx 单字段更新；在指定事务上执行（Approve 单事务原子化用，P0-B2）。
+func (r *RetailRepository) UpdateContractFieldTx(ctx context.Context, ex Executor, id, field, value string) (int64, error) {
+	return r.updateContractFieldOn(ctx, ex, id, field, value)
+}
+
+func (r *RetailRepository) updateContractFieldOn(ctx context.Context, ex Executor, id, field, value string) (int64, error) {
 	spec, ok := contractApprovableFields[field]
 	if !ok {
 		return 0, fmt.Errorf("%w: %s", ErrFieldNotAllowed, field)
@@ -65,7 +74,12 @@ func (r *RetailRepository) UpdateContractField(ctx context.Context, id, field, v
 		return 0, err
 	}
 	q := fmt.Sprintf(`UPDATE retail_contracts SET %s = $1, updated_at = now() WHERE id = $2`, spec.column)
-	tag, err := r.pool.Exec(ctx, q, parsed, id)
+	args := []any{parsed, id}
+	if org, scoped := OrgFilter(ctx); scoped { // 防按 id 改他省合同；总部「全部省」不限
+		args = append(args, org)
+		q += fmt.Sprintf(" AND org_id = $%d::uuid", len(args))
+	}
+	tag, err := ex.Exec(ctx, q, args...)
 	if err != nil {
 		return 0, err
 	}

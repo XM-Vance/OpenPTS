@@ -14,6 +14,7 @@ import (
 	"github.com/ptis/backend/internal/db"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
+	"github.com/shopspring/decimal"
 )
 
 const settlementPoints = 48
@@ -139,8 +140,16 @@ func buildDemoSettlement(d time.Time) *db.SettlementDaily {
 	devRecovery := totalFee * 0.005
 
 	pd, _ := json.Marshal(details)
-	round2 := func(x float64) *float64 { v := math.Round(x*100) / 100; return &v }
-	round4 := func(x float64) *float64 { v := math.Round(x*10000) / 10000; return &v }
+	// B7：金额用 decimal.Decimal（与 DB NUMERIC 列对齐，消除 float64 漂移）。
+	// decimal.MarshalJSONWithoutQuotes=true（db.money.go init），响应仍是 JSON 数字。
+	round2 := func(x float64) *decimal.Decimal {
+		v := decimal.NewFromFloat(math.Round(x*100) / 100)
+		return &v
+	}
+	round4 := func(x float64) *decimal.Decimal {
+		v := decimal.NewFromFloat(math.Round(x*10000) / 10000)
+		return &v
+	}
 
 	return &db.SettlementDaily{
 		OperatingDate:        d,

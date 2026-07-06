@@ -88,7 +88,7 @@ func (r *FreqRepository) ListDailySummary(ctx context.Context, limit int) ([]*Fr
 	return list, rows.Err()
 }
 
-// resolveOrgID 返回活跃组织 org_id；scoped=false 时回退到默认组织。
+// resolveOrgID 返回活跃组织 org_id；scoped=false 时回退到 FJ。
 func (r *FreqRepository) resolveOrgID(ctx context.Context) (string, error) {
 	org, scoped := OrgFilter(ctx)
 	if scoped {

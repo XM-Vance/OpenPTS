@@ -140,9 +140,9 @@ func (r *AgentRepository) List(ctx context.Context, f AgentListFilter) ([]*Agent
 }
 
 func (r *AgentRepository) Create(ctx context.Context, in AgentInput, createdBy *uuid.UUID) (*Agent, error) {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return nil, ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return nil, err
 	}
 	q := `INSERT INTO agents
 		(org_id, agent_name, contact_person, phone, email, region, commission_rate, status, description, created_by)
@@ -188,16 +188,18 @@ func (r *AgentRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// GetCustomers 查询代理商关联的客户列表（通过客户 extra 字段或单独关联）。
-// 此处返回通过 source 字段关联代理商名的客户。
+// GetCustomers 查询代理商关联的客户列表。
+// Phase 2 起以 customers.agent_id FK 关联（取代原 source=代理商名的文本弱关联，
+// 后者在转正改写 source 后会断链）。历史数据由迁移 0094 回填。
 func (r *AgentRepository) GetCustomers(ctx context.Context, agentID uuid.UUID) ([]*Customer, error) {
-	// 先获取代理商名
-	agent, err := r.GetByID(ctx, agentID)
-	if err != nil {
-		return nil, err
+	q := `SELECT ` + customerColumns + ` FROM customers WHERE agent_id = $1`
+	args := []any{agentID}
+	if org, scoped := OrgFilter(ctx); scoped { // 防读到他省客户
+		args = append(args, org)
+		q += fmt.Sprintf(" AND org_id = $%d::uuid", len(args))
 	}
-	q := `SELECT ` + customerColumns + ` FROM customers WHERE source = $1 ORDER BY created_at DESC`
-	rows, err := r.pool.Query(ctx, q, agent.AgentName)
+	q += " ORDER BY created_at DESC"
+	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +221,7 @@ func scanCustomer(row pgx.Row) (*Customer, error) {
 	err := row.Scan(
 		&c.ID, &c.UserName, &c.ShortName, &c.Location, &c.Source, &c.Manager,
 		&c.Tags, &accounts, &c.IsDemo, &extra, &c.CreatedBy,
-		&c.CreatedAt, &c.UpdatedAt,
+		&c.CreatedAt, &c.UpdatedAt, &c.AgentID,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 )
 
@@ -74,12 +74,12 @@ type TradeStrategyInput struct {
 }
 
 func (r *TradeStrategyRepository) Create(ctx context.Context, in TradeStrategyInput) (string, error) {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return "", ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return "", err
 	}
 	var id string
-	err := r.pool.QueryRow(ctx,
+	err = r.pool.QueryRow(ctx,
 		`INSERT INTO trade_strategies
 		   (strategy_name, strategy_type, target_market, parameters, status, note, org_id)
 		 VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),$7::uuid)
@@ -113,7 +113,7 @@ func (r *TradeStrategyRepository) GenerateDemo(ctx context.Context) (int, error)
 		ret := rand.Float64() * 15
 		sharpe := 0.5 + rand.Float64()*2
 		win := 55 + rand.Float64()*30
-		trades := 50 + rand.Intn(200)
+		trades := 50 + rand.IntN(200)
 		params, _ := json.Marshal(map[string]any{"version": "v1.0"})
 		if _, err := r.pool.Exec(ctx,
 			`INSERT INTO trade_strategies

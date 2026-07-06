@@ -31,6 +31,25 @@ func (h *MonthlyTradeReviewHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": list})
 }
 
+// Overview 月度复盘概览（读 monthly_trade_review 表，替代原 stub 空态）。
+func (h *MonthlyTradeReviewHandler) Overview(c *gin.Context) {
+	month := c.Query("month")
+	m, err := h.repo.GetByMonth(c.Request.Context(), month)
+	if err != nil {
+		// 无数据返回空态（exists:false），不报错——月份未结算属正常
+		c.JSON(http.StatusOK, gin.H{
+			"month": month, "exists": false,
+			"calc_status": "empty", "calc_message": "该月份暂无复盘数据",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"month":   m.OperatingMonth,
+		"exists":  true,
+		"overview": m,
+	})
+}
+
 func (h *MonthlyTradeReviewHandler) GenerateDemoData(c *gin.Context) {
 	n, err := h.repo.GenerateDemo(c.Request.Context())
 	if err != nil {

@@ -65,13 +65,15 @@ func (h *BidStubHandler) UpdateTradeSource(c *gin.Context) {
 }
 
 // POST /bid/trade-sources/:id/status
+// 写操作占位：返回 501 而非假成功 {ok:true}，避免前端误判状态已更新。
 func (h *BidStubHandler) SetTradeSourceStatus(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "日前竞价交易源管理尚未实现"})
 }
 
 // DELETE /bid/trade-sources/:id
+// 删除操作占位：同上，501 而非假成功。
 func (h *BidStubHandler) DeleteTradeSource(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "日前竞价交易源管理尚未实现"})
 }
 
 // GET /bid/simulations/next-day

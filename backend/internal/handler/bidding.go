@@ -31,6 +31,18 @@ func (h *BiddingHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": list})
 }
 
+// Statistics 竞价统计（中标率/价差/策略分布）。
+func (h *BiddingHandler) Statistics(c *gin.Context) {
+	days, _ := strconv.Atoi(c.DefaultQuery("days", "30"))
+	s, err := h.repo.Statistics(c.Request.Context(), days)
+	if err != nil {
+		log.Error().Err(err).Msg("操作失败")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请稍后重试"})
+		return
+	}
+	c.JSON(http.StatusOK, s)
+}
+
 type createBiddingReq struct {
 	TradeDate      string  `json:"trade_date" binding:"required"`
 	BiddingSession string  `json:"bidding_session" binding:"required"`

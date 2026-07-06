@@ -6,20 +6,33 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/ptis/backend/internal/auth"
+	"github.com/ptis/backend/internal/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
 )
 
+// wsDevMode 判断是否放行所有 Origin（开发期）。ENVIRONMENT 非 prod 即视为开发。
+// 与 router 的 CORS(!IsProd()) 判定口径一致，避免 WS/CORS 规则分叉。
+func wsDevMode() bool {
+	env := os.Getenv("ENVIRONMENT")
+	if env == "" {
+		env = os.Getenv("ENV")
+	}
+	return env != "prod" && env != "production"
+}
+
 var wsUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		// 生产环境应校验同源；这里允许任意 origin 便于本地调试。
-		return true
+		// 复用 CORS 同款 Origin 校验（白名单 + 同源）。
+		// 开发期放行所有 Origin 便于本地调试；生产期严格校验，防 CSWSH。
+		return middleware.OriginAllowed(wsDevMode(), r.Header.Get("Origin"), r.Host)
 	},
 }
 

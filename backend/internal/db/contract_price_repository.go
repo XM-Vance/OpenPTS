@@ -5,22 +5,24 @@ package db
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // ─────────────── D6 合同电价日维度 ───────────────
 
 type ContractPriceDaily struct {
-	ID               string    `json:"id"`
-	ContractID       string    `json:"contract_id"`
-	PriceDate        time.Time `json:"price_date"`
-	UnitPrice        float64   `json:"unit_price"`
-	DailyEnergy      float64   `json:"daily_energy"`
-	DailyAmount      float64   `json:"daily_amount"`
-	CumulativeEnergy float64   `json:"cumulative_energy"`
-	CumulativeAmount float64   `json:"cumulative_amount"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID               string          `json:"id"`
+	ContractID       string          `json:"contract_id"`
+	PriceDate        time.Time       `json:"price_date"`
+	UnitPrice        decimal.Decimal `json:"unit_price"` // P4: numeric(18,4)
+	DailyEnergy      float64         `json:"daily_energy"`
+	DailyAmount      decimal.Decimal `json:"daily_amount"` // P4: = unit_price * daily_energy
+	CumulativeEnergy float64         `json:"cumulative_energy"`
+	CumulativeAmount decimal.Decimal `json:"cumulative_amount"` // P4: 累计 = Σ daily_amount
+	CreatedAt        time.Time       `json:"created_at"`
 }
 
 type ContractPriceRepository struct{ pool *Pool }
@@ -68,7 +70,7 @@ func (r *ContractPriceRepository) List(ctx context.Context, contractID string, d
 
 // GenerateDemo 为所有 active 合同生成最近 30 天的电价记录。
 func (r *ContractPriceRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
@@ -102,16 +104,18 @@ func (r *ContractPriceRepository) GenerateDemo(ctx context.Context) (int, error)
 
 	cnt := 0
 	for _, c := range contracts {
-		var cumEnergy, cumAmount float64
+		var cumEnergy float64
+		cumAmount := decimal.Zero
 		// 估算每日基准电量（合同总量 / 365）
 		dailyBase := c.energy / 365
 		for i := 29; i >= 0; i-- {
 			d := time.Now().AddDate(0, 0, -i).Truncate(24 * time.Hour)
-			price := 380 + rand.Float64()*60 // 380-440 元/MWh
+			// P4: 单价/金额 decimal（daily_amount = unit_price*energy，累计 = Σ daily_amount 精确）；电量 float。
+			price := decimal.NewFromFloat(380 + rand.Float64()*60).Round(4) // 380-440 元/MWh
 			energy := dailyBase * (0.85 + rand.Float64()*0.3)
-			amount := price * energy
+			amount := price.Mul(decimal.NewFromFloat(energy)).Round(4)
 			cumEnergy += energy
-			cumAmount += amount
+			cumAmount = cumAmount.Add(amount)
 			if _, err := r.pool.Exec(ctx,
 				`INSERT INTO contract_price_daily
 				   (contract_id, price_date, unit_price, daily_energy, daily_amount,

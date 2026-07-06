@@ -8,10 +8,23 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// Executor 抽象落库所需的查询能力。*db.Pool 与 pgx.Tx 都满足此接口，
+// 让 Approve 能把 Transition 与 Apply 包在同一事务内（P0-B2 原子化）。
+// 方法集与 db.Executor 一致，使两接口可互换（applier 收到的 tx 可直接喂给 repo 的 *Tx 方法）。
+type Executor interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
 // ApplyFunc 把审批 payload 应用到目标资源；返回 nil 表示落库成功。
-type ApplyFunc func(ctx context.Context, resourceID string, payload json.RawMessage) error
+// ex 是事务执行器（Approve 时为 pgx.Tx，非事务场景传 *db.Pool）。
+type ApplyFunc func(ctx context.Context, ex Executor, resourceID string, payload json.RawMessage) error
 
 type Registry struct {
 	mu       sync.RWMutex
@@ -31,14 +44,15 @@ func (r *Registry) Register(resource string, fn ApplyFunc) {
 }
 
 // Apply 根据 resource 名调用对应 applier；未注册的资源直接返回 nil（允许「只走流程不落库」）。
-func (r *Registry) Apply(ctx context.Context, resource, resourceID string, payload json.RawMessage) error {
+// ex 透传给 applier，使其在同一事务内落库。
+func (r *Registry) Apply(ctx context.Context, ex Executor, resource, resourceID string, payload json.RawMessage) error {
 	r.mu.RLock()
 	fn, ok := r.appliers[resource]
 	r.mu.RUnlock()
 	if !ok {
 		return nil // 静默放过：业务方未声明落库逻辑就只走审批流程
 	}
-	if err := fn(ctx, resourceID, payload); err != nil {
+	if err := fn(ctx, ex, resourceID, payload); err != nil {
 		return fmt.Errorf("apply %s/%s: %w", resource, resourceID, err)
 	}
 	return nil

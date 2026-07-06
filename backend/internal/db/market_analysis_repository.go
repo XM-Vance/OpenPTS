@@ -5,7 +5,7 @@ package db
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"time"
 )
@@ -68,7 +68,7 @@ func (r *MarketAnalysisRepository) List(ctx context.Context, days int) ([]*Marke
 }
 
 func (r *MarketAnalysisRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
@@ -87,7 +87,7 @@ func (r *MarketAnalysisRepository) GenerateDemo(ctx context.Context) (int, error
 		vol := (high - low) / avg
 		volume := 350000 + rand.Float64()*100000
 		gap := high - low
-		sent := sentiments[rand.Intn(len(sentiments))]
+		sent := sentiments[rand.IntN(len(sentiments))]
 		if _, err := r.pool.Exec(ctx, `
 			INSERT INTO market_analysis_daily
 			(trade_date, high_price, low_price, avg_price, volatility, total_volume_mwh,

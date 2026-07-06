@@ -1,0 +1,6 @@
+-- 回滚：改名还原（卫星表先于父表还原，顺序无强制要求，但保持对称）。
+ALTER TABLE IF EXISTS intent_customer_monthly_wholesale_deprecated RENAME TO intent_customer_monthly_wholesale;
+ALTER TABLE IF EXISTS intent_customer_monthly_retail_simulation_deprecated RENAME TO intent_customer_monthly_retail_simulation;
+ALTER TABLE IF EXISTS intent_customer_meter_reads_daily_deprecated RENAME TO intent_customer_meter_reads_daily;
+ALTER TABLE IF EXISTS intent_customer_load_curve_daily_deprecated RENAME TO intent_customer_load_curve_daily;
+ALTER TABLE IF EXISTS intent_customers_deprecated RENAME TO intent_customers;

@@ -23,9 +23,12 @@ type SSEEvent struct {
 	Data any    `json:"data"`
 }
 
+// sseClient 记录订阅者的 org 与身份，用于按租户频道过滤推送。
 type sseClient struct {
-	id  string
-	ch  chan SSEEvent
+	id    string
+	orgID string // 订阅者活跃省（组织 ID）
+	isHQ  bool   // 总部用户：接收所有租户的事件（全局视角）
+	ch    chan SSEEvent
 }
 
 type SSEHub struct {
@@ -35,8 +38,9 @@ type SSEHub struct {
 
 func NewSSEHub() *SSEHub { return &SSEHub{clients: map[string]*sseClient{}} }
 
-func (h *SSEHub) addClient(id string) *sseClient {
-	c := &sseClient{id: id, ch: make(chan SSEEvent, 16)}
+// addClient 注册一个订阅者。orgID/isHQ 用于按租户频道过滤。
+func (h *SSEHub) addClient(id, orgID string, isHQ bool) *sseClient {
+	c := &sseClient{id: id, orgID: orgID, isHQ: isHQ, ch: make(chan SSEEvent, 16)}
 	h.mu.Lock()
 	h.clients[id] = c
 	h.mu.Unlock()
@@ -53,6 +57,9 @@ func (h *SSEHub) removeClient(id string) {
 }
 
 // Publish 向所有连接的客户端广播事件。channel 写阻塞时直接丢弃（避免慢消费拖死）。
+//
+// 仅用于跨租户的系统级广播（连接 hello / 心跳 ping / 联调 test / 后台调度任务事件）。
+// 业务级事件（审批、告警等含租户语义的）应改用 PublishToOrg，避免跨省信息泄露。
 func (h *SSEHub) Publish(ev SSEEvent) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -60,6 +67,26 @@ func (h *SSEHub) Publish(ev SSEEvent) {
 		select {
 		case c.ch <- ev:
 		default:
+		}
+	}
+}
+
+// PublishToOrg 按租户频道定向推送：仅 orgID 匹配的订阅者，或总部（isHQ）订阅者收到。
+// 用于业务事件（审批、告警等），防止 A 省用户收到 B 省的通知。
+// orgID 为空时回退为 Publish（不丢失事件，但丧失隔离——调用方应确保传入 org）。
+func (h *SSEHub) PublishToOrg(orgID string, ev SSEEvent) {
+	if orgID == "" {
+		h.Publish(ev)
+		return
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, c := range h.clients {
+		if c.isHQ || c.orgID == orgID {
+			select {
+			case c.ch <- ev:
+			default:
+			}
 		}
 	}
 }
@@ -192,7 +219,8 @@ func (h *SSEHandler) Stream(c *gin.Context) {
 	c.Header("X-Accel-Buffering", "no") // nginx 关闭缓冲
 
 	clientID := fmt.Sprintf("%s-%d", claims.Username, time.Now().UnixNano())
-	client := h.hub.addClient(clientID)
+	// 携带订阅者的活跃省与总部标记，用于 PublishToOrg 按租户频道过滤。
+	client := h.hub.addClient(clientID, claims.OrgID, claims.IsHQ)
 	defer h.hub.removeClient(clientID)
 
 	// 首次推送一条 hello 让前端确认连接成功

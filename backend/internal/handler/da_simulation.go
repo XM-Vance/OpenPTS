@@ -3,7 +3,7 @@ package handler
 
 import (
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"strconv"
 	"time"
@@ -93,7 +93,7 @@ type runSimulationReq struct {
 }
 
 // RunSimulation 运行模拟计算
-// 本骨架使用本地模拟算法生成结果；二次开发可在此接入更精细的出清/撮合模型。
+// 在实际项目中会调用 algo-service；此处使用本地模拟算法生成结果。
 func (h *DASimulationHandler) RunSimulation(c *gin.Context) {
 	id := c.Param("id")
 	scenario, err := h.repo.GetScenario(c.Request.Context(), id)

@@ -109,11 +109,11 @@ func (r *CustomFieldRepository) List(ctx context.Context, entityType string) ([]
 	return list, rows.Err()
 }
 
-// Create 新建自定义字段定义；写操作要求具体活跃省。
+// Create 新建自定义字段定义；写操作要求具体活跃组织。
 func (r *CustomFieldRepository) Create(ctx context.Context, in *CustomFieldDefInput, createdBy *uuid.UUID) (*CustomFieldDef, error) {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return nil, ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return nil, err
 	}
 	fieldType := in.FieldType
 	if fieldType == "" {
@@ -178,4 +178,98 @@ func nullJSON(v json.RawMessage) any {
 		return nil
 	}
 	return v
+}
+
+// ─── 自定义字段值（custom_field_values，0102 新增）───
+// 让 definitions 定义的某个字段，能写入到具体客户/合同等实体上。
+
+var ErrCustomFieldValueNotFound = errors.New("自定义字段值不存在")
+
+// CustomFieldValue 某实体某字段的值。
+type CustomFieldValue struct {
+	ID           uuid.UUID       `json:"id"`
+	OrgID        *uuid.UUID      `json:"org_id,omitempty"`
+	DefinitionID uuid.UUID       `json:"definition_id"`
+	EntityID     uuid.UUID       `json:"entity_id"`
+	Value        json.RawMessage `json:"value,omitempty"`
+	CreatedBy    *uuid.UUID      `json:"created_by,omitempty"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+}
+
+const customFieldValueColumns = `id, org_id, definition_id, entity_id, value, created_by, created_at, updated_at`
+
+// ListValues 查询某实体（entityType + entityID）的全部字段值；按活跃组织过滤。
+// entityType 用于校验 definition 归属（可选，空则跳过校验）。
+func (r *CustomFieldRepository) ListValues(ctx context.Context, entityID uuid.UUID) ([]*CustomFieldValue, error) {
+	where := make([]string, 0, 2)
+	args := make([]any, 0, 2)
+	org, scoped := OrgFilter(ctx)
+	if scoped {
+		args = append(args, org)
+		where = append(where, fmt.Sprintf("org_id = $%d::uuid", len(args)))
+	}
+	args = append(args, entityID)
+	where = append(where, fmt.Sprintf("entity_id = $%d::uuid", len(args)))
+	q := "SELECT " + customFieldValueColumns + " FROM custom_field_values WHERE " + strings.Join(where, " AND ") +
+		" ORDER BY updated_at DESC"
+	rows, err := r.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	list := make([]*CustomFieldValue, 0, 8)
+	for rows.Next() {
+		var v CustomFieldValue
+		if err := rows.Scan(&v.ID, &v.OrgID, &v.DefinitionID, &v.EntityID, &v.Value,
+			&v.CreatedBy, &v.CreatedAt, &v.UpdatedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, &v)
+	}
+	return list, rows.Err()
+}
+
+// UpsertValue 新增或更新某实体某字段的值（按 definition_id + entity_id 唯一键 upsert）。
+// 写操作要求具体活跃组织。
+func (r *CustomFieldRepository) UpsertValue(ctx context.Context, definitionID, entityID uuid.UUID, value json.RawMessage, createdBy *uuid.UUID) (*CustomFieldValue, error) {
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return nil, err
+	}
+	q := `INSERT INTO custom_field_values (org_id, definition_id, entity_id, value, created_by)
+		VALUES ($1::uuid, $2, $3, $4, $5)
+		ON CONFLICT (org_id, definition_id, entity_id) DO UPDATE
+			SET value = EXCLUDED.value, updated_at = now()
+		RETURNING ` + customFieldValueColumns
+	var v CustomFieldValue
+	err = r.pool.QueryRow(ctx, q, org, definitionID, entityID, nullJSON(value), createdBy).Scan(
+		&v.ID, &v.OrgID, &v.DefinitionID, &v.EntityID, &v.Value,
+		&v.CreatedBy, &v.CreatedAt, &v.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrCustomFieldValueNotFound
+		}
+		return nil, err
+	}
+	return &v, nil
+}
+
+// DeleteValue 删除某实体某字段的值。
+func (r *CustomFieldRepository) DeleteValue(ctx context.Context, definitionID, entityID uuid.UUID) error {
+	q := `DELETE FROM custom_field_values WHERE definition_id = $1 AND entity_id = $2`
+	args := []any{definitionID, entityID}
+	org, scoped := OrgFilter(ctx)
+	if scoped {
+		q += fmt.Sprintf(" AND org_id = $%d::uuid", len(args)+1)
+		args = append(args, org)
+	}
+	tag, err := r.pool.Exec(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrCustomFieldValueNotFound
+	}
+	return nil
 }

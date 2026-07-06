@@ -68,7 +68,8 @@ func (h *UsersHandler) Get(c *gin.Context) {
 
 type CreateUserRequest struct {
 	Username    string   `json:"username" binding:"required,min=2,max=64"`
-	Password    string   `json:"password" binding:"required,min=4,max=128"`
+	// 密码最小长度与登录一致（min=7），避免创建出无法登录的弱密码账号。
+	Password    string   `json:"password" binding:"required,min=7,max=128"`
 	DisplayName string   `json:"display_name"`
 	Email       string   `json:"email" binding:"omitempty,email"`
 	Phone       string   `json:"phone"`
@@ -149,7 +150,7 @@ func (h *UsersHandler) Update(c *gin.Context) {
 }
 
 type ResetPasswordRequest struct {
-	NewPassword string `json:"new_password" binding:"required,min=4,max=128"`
+	NewPassword string `json:"new_password" binding:"required,min=7,max=128"`
 }
 
 // ResetPassword POST /api/v1/users/:id/password

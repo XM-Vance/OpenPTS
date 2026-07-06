@@ -95,11 +95,11 @@ func (r *TagRepository) List(ctx context.Context, entityType string) ([]*TagDef,
 	return list, rows.Err()
 }
 
-// Create 新建标签；写操作要求具体活跃省。
+// Create 新建标签；写操作要求具体活跃组织。
 func (r *TagRepository) Create(ctx context.Context, in *TagInput, createdBy *uuid.UUID) (*TagDef, error) {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return nil, ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return nil, err
 	}
 	color := in.Color
 	if color == "" {

@@ -12,6 +12,8 @@ import (
 // 当 err 为 db.ErrOrgRequired（总部处于「全部省」活跃态下执行省隔离写入时由 repo 层返回）时，
 // 写出 400 与中文提示并返回 true；否则返回 false，交由调用方按通用 500 处理。
 //
+// 现已走统一 respondError 口径（见 respond.go）。respondOrgErr 为等价别名，新代码可任选。
+//
 // 用法：紧跟在 repo 写入返回 err 之后：
 //
 //	if err != nil {
@@ -22,7 +24,7 @@ import (
 //	}
 func respondOrgRequired(c *gin.Context, err error) bool {
 	if errors.Is(err, db.ErrOrgRequired) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请先选择具体省份"})
+		respondError(c, http.StatusBadRequest, "请先选择具体省份")
 		return true
 	}
 	return false

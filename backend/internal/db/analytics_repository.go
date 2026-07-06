@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -72,9 +73,14 @@ func (r *AnalyticsRepository) ListAlerts(
 	if !includeAcked {
 		where += " AND a.acknowledged = FALSE"
 	}
+	args := []any{limit}
+	if org, scoped := OrgFilter(ctx); scoped { // 按活跃组织隔离；总部「全部省」不过滤
+		args = append(args, org)
+		where += fmt.Sprintf(" AND a.org_id = $%d::uuid", len(args))
+	}
 	q := alertSelect + where + " ORDER BY a.alert_date DESC, a.created_at DESC LIMIT $1"
 
-	rows, err := r.pool.Query(ctx, q, limit)
+	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -97,10 +103,15 @@ func (r *AnalyticsRepository) ListAlerts(
 }
 
 func (r *AnalyticsRepository) AckAlert(ctx context.Context, id, userID uuid.UUID) error {
-	const q = `UPDATE customer_anomaly_alerts
+	q := `UPDATE customer_anomaly_alerts
 		SET acknowledged = TRUE, acknowledged_by = $2, acknowledged_at = NOW()
 		WHERE id = $1`
-	tag, err := r.pool.Exec(ctx, q, id, userID)
+	args := []any{id, userID}
+	if org, scoped := OrgFilter(ctx); scoped { // 防按 id 确认他省告警
+		args = append(args, org)
+		q += fmt.Sprintf(" AND org_id = $%d::uuid", len(args))
+	}
+	tag, err := r.pool.Exec(ctx, q, args...)
 	if err != nil {
 		return err
 	}
@@ -114,23 +125,32 @@ func (r *AnalyticsRepository) InsertAlert(
 	ctx context.Context, custID uuid.UUID, d time.Time,
 	alertType, severity, ruleID, reason string, confidence float64,
 ) error {
+	org, err := MustScoped(ctx) // 告警须落到具体省
+	if err != nil {
+		return err
+	}
 	const q = `INSERT INTO customer_anomaly_alerts
-		(customer_id, alert_date, alert_type, severity, confidence, reason, rule_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`
-	_, err := r.pool.Exec(ctx, q, custID, d, alertType, severity, confidence, reason, ruleID)
+		(customer_id, alert_date, alert_type, severity, confidence, reason, rule_id, org_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8::uuid)`
+	_, err = r.pool.Exec(ctx, q, custID, d, alertType, severity, confidence, reason, ruleID, org)
 	return err
 }
 
 // GetAlertStats 一次 SQL 取四项统计。
 func (r *AnalyticsRepository) GetAlertStats(ctx context.Context) (*AlertStats, error) {
-	const q = `SELECT
+	q := `SELECT
 		COUNT(*)                                       AS total,
 		COUNT(*) FILTER (WHERE NOT acknowledged)       AS pending,
 		COUNT(*) FILTER (WHERE acknowledged)           AS acked,
 		COUNT(*) FILTER (WHERE severity = 'critical') AS critical
 		FROM customer_anomaly_alerts`
+	args := []any{}
+	if org, scoped := OrgFilter(ctx); scoped {
+		args = append(args, org)
+		q += fmt.Sprintf(" WHERE org_id = $%d::uuid", len(args))
+	}
 	var s AlertStats
-	if err := r.pool.QueryRow(ctx, q).Scan(
+	if err := r.pool.QueryRow(ctx, q, args...).Scan(
 		&s.Total, &s.Pending, &s.Acknowledged, &s.Critical,
 	); err != nil {
 		return nil, err
@@ -144,16 +164,21 @@ func (r *AnalyticsRepository) GetAlertStats(ctx context.Context) (*AlertStats, e
 func (r *AnalyticsRepository) ListLatestCharacteristics(
 	ctx context.Context, limit int,
 ) ([]*CustomerCharacteristic, error) {
-	const q = `
+	q := `
 		SELECT DISTINCT ON (cc.customer_id)
 			cc.id, cc.customer_id, cust.user_name, cc.data_date,
 			cc.long_term, cc.short_term, cc.tags,
 			cc.regularity_score, cc.quality_rating
 		FROM customer_characteristics cc
-		JOIN customers cust ON cust.id = cc.customer_id
-		ORDER BY cc.customer_id, cc.data_date DESC
-		LIMIT $1`
-	rows, err := r.pool.Query(ctx, q, limit)
+		JOIN customers cust ON cust.id = cc.customer_id`
+	args := []any{}
+	if org, scoped := OrgFilter(ctx); scoped {
+		args = append(args, org)
+		q += fmt.Sprintf(" WHERE cc.org_id = $%d::uuid", len(args))
+	}
+	args = append(args, limit)
+	q += fmt.Sprintf(" ORDER BY cc.customer_id, cc.data_date DESC LIMIT $%d", len(args))
+	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -179,15 +204,19 @@ func (r *AnalyticsRepository) UpsertCharacteristic(
 	longTerm, shortTerm json.RawMessage, tags []string,
 	regularity float64, quality string,
 ) error {
+	org, err := MustScoped(ctx) // 特征须落到具体省
+	if err != nil {
+		return err
+	}
 	const q = `INSERT INTO customer_characteristics
-		(customer_id, data_date, long_term, short_term, tags, regularity_score, quality_rating)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (customer_id, data_date) DO UPDATE SET
+		(customer_id, data_date, long_term, short_term, tags, regularity_score, quality_rating, org_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8::uuid)
+		ON CONFLICT (org_id, customer_id, data_date) DO UPDATE SET
 			long_term        = EXCLUDED.long_term,
 			short_term       = EXCLUDED.short_term,
 			tags             = EXCLUDED.tags,
 			regularity_score = EXCLUDED.regularity_score,
 			quality_rating   = EXCLUDED.quality_rating`
-	_, err := r.pool.Exec(ctx, q, custID, d, longTerm, shortTerm, tags, regularity, quality)
+	_, err = r.pool.Exec(ctx, q, custID, d, longTerm, shortTerm, tags, regularity, quality, org)
 	return err
 }

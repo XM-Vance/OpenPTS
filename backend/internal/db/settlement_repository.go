@@ -11,20 +11,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 )
 
 type SettlementDaily struct {
-	ID                   uuid.UUID       `json:"id"`
-	OperatingDate        time.Time       `json:"operating_date"`
-	Version              string          `json:"version"`
-	PeriodDetails        json.RawMessage `json:"period_details,omitempty"`
-	ContractFee          *float64        `json:"contract_fee,omitempty"`
-	DayAheadFee          *float64        `json:"day_ahead_fee,omitempty"`
-	RealTimeFee          *float64        `json:"real_time_fee,omitempty"`
-	TotalEnergyFee       *float64        `json:"total_energy_fee,omitempty"`
-	EnergyAvgPrice       *float64        `json:"energy_avg_price,omitempty"`
-	DeviationRecoveryFee *float64        `json:"deviation_recovery_fee,omitempty"`
-	CreatedAt            time.Time       `json:"created_at"`
+	ID                   uuid.UUID        `json:"id"`
+	OperatingDate        time.Time        `json:"operating_date"`
+	Version              string           `json:"version"`
+	PeriodDetails        json.RawMessage  `json:"period_details,omitempty"`
+	ContractFee          *decimal.Decimal `json:"contract_fee,omitempty"`
+	DayAheadFee          *decimal.Decimal `json:"day_ahead_fee,omitempty"`
+	RealTimeFee          *decimal.Decimal `json:"real_time_fee,omitempty"`
+	TotalEnergyFee       *decimal.Decimal `json:"total_energy_fee,omitempty"`
+	EnergyAvgPrice       *decimal.Decimal `json:"energy_avg_price,omitempty"`
+	DeviationRecoveryFee *decimal.Decimal `json:"deviation_recovery_fee,omitempty"`
+	CreatedAt            time.Time        `json:"created_at"`
 }
 
 var ErrSettlementNotFound = errors.New("结算记录不存在")
@@ -106,9 +107,9 @@ func (r *SettlementRepository) GetByDate(ctx context.Context, date time.Time, ve
 // Upsert 写入或覆盖（(org_id, operating_date, version) 唯一）。
 // period_details 用 json.RawMessage 传给 pgx，由其 JSONB 编解码识别。
 func (r *SettlementRepository) Upsert(ctx context.Context, s *SettlementDaily) error {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return err
 	}
 	const q = `
 		INSERT INTO settlement_daily
@@ -124,7 +125,7 @@ func (r *SettlementRepository) Upsert(ctx context.Context, s *SettlementDaily) e
 			total_energy_fee = EXCLUDED.total_energy_fee,
 			energy_avg_price = EXCLUDED.energy_avg_price,
 			deviation_recovery_fee = EXCLUDED.deviation_recovery_fee`
-	_, err := r.pool.Exec(ctx, q,
+	_, err = r.pool.Exec(ctx, q,
 		s.OperatingDate, s.Version, s.PeriodDetails,
 		s.ContractFee, s.DayAheadFee, s.RealTimeFee,
 		s.TotalEnergyFee, s.EnergyAvgPrice, s.DeviationRecoveryFee, org)

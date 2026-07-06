@@ -4,7 +4,8 @@ package db
 
 import (
 	"context"
-	"math/rand"
+	"fmt"
+	"math/rand/v2"
 	"time"
 )
 
@@ -37,11 +38,19 @@ func (r *MatchQuoteRepository) List(ctx context.Context, days, limit int) ([]*Ma
 		limit = 200
 	}
 	since := time.Now().AddDate(0, 0, -days)
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, match_date, match_session, side, declared_mw, cleared_mw,
+	args := []any{since}
+	q := `SELECT id, match_date, match_session, side, declared_mw, cleared_mw,
 			declared_price, cleared_price, status, created_at
-		 FROM rolling_match_quotes WHERE match_date >= $1
-		 ORDER BY match_date DESC, match_session ASC LIMIT $2`, since, limit)
+		 FROM rolling_match_quotes WHERE match_date >= $1`
+	n := 2
+	if org, scoped := OrgFilter(ctx); scoped {
+		args = append(args, org)
+		q += fmt.Sprintf(" AND org_id = $%d::uuid", n)
+		n++
+	}
+	q += fmt.Sprintf(" ORDER BY match_date DESC, match_session ASC LIMIT $%d", n)
+	args = append(args, limit)
+	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +69,10 @@ func (r *MatchQuoteRepository) List(ctx context.Context, days, limit int) ([]*Ma
 }
 
 func (r *MatchQuoteRepository) GenerateDemo(ctx context.Context) (int, error) {
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return 0, err
+	}
 	statuses := []string{"cleared", "cleared", "cleared", "partial", "failed"}
 	cnt := 0
 	for d := 0; d < 7; d++ {
@@ -68,7 +81,7 @@ func (r *MatchQuoteRepository) GenerateDemo(ctx context.Context) (int, error) {
 			for _, side := range []string{"buy", "sell"} {
 				decl := 50 + rand.Float64()*200
 				declPrice := 380 + rand.Float64()*80
-				status := statuses[rand.Intn(len(statuses))]
+				status := statuses[rand.IntN(len(statuses))]
 				var cleared, clearedPrice float64
 				switch status {
 				case "cleared":
@@ -84,9 +97,9 @@ func (r *MatchQuoteRepository) GenerateDemo(ctx context.Context) (int, error) {
 				if _, err := r.pool.Exec(ctx,
 					`INSERT INTO rolling_match_quotes
 					   (match_date, match_session, side, declared_mw, cleared_mw,
-					    declared_price, cleared_price, status)
-					 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-					date, sess, side, decl, cleared, declPrice, clearedPrice, status); err != nil {
+					    declared_price, cleared_price, status, org_id)
+					 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+					date, sess, side, decl, cleared, declPrice, clearedPrice, status, org); err != nil {
 					return cnt, err
 				}
 				cnt++

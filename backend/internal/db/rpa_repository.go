@@ -4,7 +4,7 @@ package db
 
 import (
 	"context"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 )
 
@@ -105,10 +105,10 @@ func (r *RPARepository) GenerateDemo(ctx context.Context) (int, error) {
 		}
 		// 每个任务生成最近 5 次运行
 		for i := 0; i < 5; i++ {
-			start := time.Now().Add(-time.Duration(i*24) * time.Hour).Add(-time.Duration(rand.Intn(120)) * time.Minute)
-			dur := 30 + rand.Intn(300)
+			start := time.Now().Add(-time.Duration(i*24) * time.Hour).Add(-time.Duration(rand.IntN(120)) * time.Minute)
+			dur := 30 + rand.IntN(300)
 			fin := start.Add(time.Duration(dur) * time.Second)
-			status := statuses[rand.Intn(len(statuses))]
+			status := statuses[rand.IntN(len(statuses))]
 			var errMsg *string
 			if status == "failed" {
 				m := "连接超时"
@@ -117,8 +117,8 @@ func (r *RPARepository) GenerateDemo(ctx context.Context) (int, error) {
 			files := 0
 			bytes := int64(0)
 			if status == "success" {
-				files = 1 + rand.Intn(8)
-				bytes = int64(files) * int64(50000+rand.Intn(500000))
+				files = 1 + rand.IntN(8)
+				bytes = int64(files) * int64(50000+rand.IntN(500000))
 			}
 			if _, err := r.pool.Exec(ctx,
 				`INSERT INTO rpa_runs (rpa_job_id, started_at, finished_at, status,

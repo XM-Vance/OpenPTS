@@ -10,6 +10,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 func testPool(t *testing.T) *Pool {
@@ -44,7 +46,10 @@ func createTempOrg(t *testing.T, pool *Pool, tag string) string {
 	}
 	t.Cleanup(func() {
 		ctx := context.Background()
-		for _, tbl := range []string{"deviation_settlement", "pre_settlement_daily"} {
+		for _, tbl := range []string{
+			"deviation_settlement", "pre_settlement_daily",
+			"batch_monthly_settlement", "retail_monthly_settlement", // P4 stage-two
+		} {
 			if _, err := pool.Exec(ctx, "DELETE FROM "+tbl+" WHERE org_id = $1::uuid", id); err != nil {
 				t.Errorf("清理 %s 失败: %v", tbl, err)
 			}
@@ -71,12 +76,15 @@ func TestDeviationSummaryMathAndOrgIsolation(t *testing.T) {
 		d := time.Now().AddDate(0, 0, -daysAgo).Truncate(24 * time.Hour)
 		actual := declared + deviation
 		rate := deviation / declared * 100
+		// 金额列(numeric)用 decimal 写入；电量/率仍 float。
 		if _, err := pool.Exec(context.Background(), `
 			INSERT INTO deviation_settlement
 			  (operating_date, declared_energy_mwh, actual_energy_mwh, deviation_energy_mwh,
 			   deviation_rate, deviation_cost, penalty_cost, total_settlement, category, org_id)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::uuid)`,
-			d, declared, actual, deviation, rate, devCost, penalty, devCost+penalty, cat, org); err != nil {
+			d, declared, actual, deviation, rate,
+			decimal.NewFromFloat(devCost), decimal.NewFromFloat(penalty), decimal.NewFromFloat(devCost+penalty),
+			cat, org); err != nil {
 			t.Fatalf("插入夹具失败: %v", err)
 		}
 	}
@@ -105,14 +113,14 @@ func TestDeviationSummaryMathAndOrgIsolation(t *testing.T) {
 	if !almostEq(da.TotalDeviationEnergy, 60) { // 100 + (-40)
 		t.Errorf("day_ahead 偏差电量合计应 60，得到 %v", da.TotalDeviationEnergy)
 	}
-	if !almostEq(da.TotalCost, 26000) { // 40000 + (-14000)
+	if !da.TotalCost.Equal(decimal.NewFromInt(26000)) { // 40000 + (-14000)，P4 精确
 		t.Errorf("day_ahead 结算合计应 26000，得到 %v", da.TotalCost)
 	}
 	if !almostEq(da.AvgDeviationRate, 0.5) { // (5% + -4%)/2
 		t.Errorf("day_ahead 平均偏差率应 0.5，得到 %v", da.AvgDeviationRate)
 	}
 	rt := byCat["real_time"]
-	if rt == nil || rt.Count != 1 || !almostEq(rt.TotalCost, 10250) {
+	if rt == nil || rt.Count != 1 || !rt.TotalCost.Equal(decimal.NewFromInt(10250)) {
 		t.Errorf("real_time 汇总不符: %+v", rt)
 	}
 
@@ -157,19 +165,56 @@ func TestDeviationGenerateDemoInvariants(t *testing.T) {
 		if !almostEq(r.DeviationEnergy/r.DeclaredEnergy*100, r.DeviationRate) {
 			t.Errorf("偏差率不自洽: %v vs %v", r.DeviationEnergy/r.DeclaredEnergy*100, r.DeviationRate)
 		}
-		if !almostEq(r.DeviationCost+r.PenaltyCost, r.TotalSettlement) {
+		// P4: 金额改 numeric+decimal 后，「偏差费+考核费 == 总结算」精确成立（不再用容差）。
+		if !r.DeviationCost.Add(r.PenaltyCost).Equal(r.TotalSettlement) {
 			t.Errorf("偏差费+考核费 != 总结算 (%v + %v != %v)", r.DeviationCost, r.PenaltyCost, r.TotalSettlement)
 		}
 		// 考核费恒非负(按偏差绝对值计),且超 ±5% 时为 |偏差|×50、否则为 0。
-		if r.PenaltyCost < 0 {
+		if r.PenaltyCost.IsNegative() {
 			t.Errorf("考核费不应为负(倒贴奖励): %v (rate=%v)", r.PenaltyCost, r.DeviationRate)
 		}
 		if r.DeviationRate > 5 || r.DeviationRate < -5 {
-			if !almostEq(r.PenaltyCost, math.Abs(r.DeviationEnergy)*50) {
-				t.Errorf("超限考核费应为 |偏差|×50: %v vs %v", r.PenaltyCost, math.Abs(r.DeviationEnergy)*50)
+			wantPenalty := decimal.NewFromFloat(math.Abs(r.DeviationEnergy)).Mul(decimal.NewFromInt(50)).Round(4)
+			if !r.PenaltyCost.Equal(wantPenalty) {
+				t.Errorf("超限考核费应为 |偏差|×50: %v vs %v", r.PenaltyCost, wantPenalty)
 			}
-		} else if !almostEq(r.PenaltyCost, 0) {
+		} else if !r.PenaltyCost.IsZero() {
 			t.Errorf("±5%% 内不应有考核费,得到 %v (rate=%v)", r.PenaltyCost, r.DeviationRate)
+		}
+	}
+}
+
+// ─── P4 stage-two:批量月度结算 total_fee = 电能量+容量+辅助 精确成立 ───
+
+func TestBatchMonthlySettlementFeeSumExact(t *testing.T) {
+	pool := testPool(t)
+	repo := NewMonthlySettlementRepository(pool)
+	org := createTempOrg(t, pool, "BATCH")
+	ctx := WithOrg(context.Background(), org)
+
+	n, err := repo.GenerateDemo(ctx)
+	if err != nil {
+		t.Fatalf("GenerateDemo 失败: %v", err)
+	}
+	if n != 12 {
+		t.Fatalf("应生成 12 行，得到 %d", n)
+	}
+	list, err := repo.List(ctx, 12)
+	if err != nil {
+		t.Fatalf("List 失败: %v", err)
+	}
+	if len(list) != 12 {
+		t.Fatalf("回读应 12 行，得到 %d", len(list))
+	}
+	for _, m := range list {
+		// 合计 = 电能量电费 + 容量电费 + 辅助服务（不含补贴），numeric+decimal 下精确。
+		want := m.EnergyFee.Add(m.CapacityFee).Add(m.AncillaryFee)
+		if !want.Equal(m.TotalFee) {
+			t.Errorf("%s: total_fee 应 = 电能量+容量+辅助 (%v+%v+%v=%v) 得 %v",
+				m.OperatingMonth, m.EnergyFee, m.CapacityFee, m.AncillaryFee, want, m.TotalFee)
+		}
+		if m.PolicySubsidy.IsNegative() {
+			t.Errorf("%s: 政策补贴不应为负: %v", m.OperatingMonth, m.PolicySubsidy)
 		}
 	}
 }

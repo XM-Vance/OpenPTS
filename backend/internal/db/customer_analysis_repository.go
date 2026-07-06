@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 )
 
@@ -88,7 +88,8 @@ func (r *CustomerAnalysisRepository) GenerateDemo(ctx context.Context) (int, err
 			return 0, fmt.Errorf("resolve default org: %w", err)
 		}
 	}
-	rows, err := r.pool.Query(ctx, `SELECT id FROM customers WHERE org_id = $1::uuid LIMIT 30`, orgID)
+	// Phase 3b：客户分析放开到意向期客户（含 intent/service/churned，仅排除原始 lead）。
+	rows, err := r.pool.Query(ctx, `SELECT id FROM customers WHERE org_id = $1::uuid AND lifecycle_stage <> 'lead' LIMIT 30`, orgID)
 	if err != nil {
 		return 0, err
 	}
@@ -106,13 +107,13 @@ func (r *CustomerAnalysisRepository) GenerateDemo(ctx context.Context) (int, err
 	cnt := 0
 	for _, cid := range customers {
 		for i := 0; i < 3; i++ {
-			ym := time.Now().AddDate(0, -i, 0).Format("2006-01")
+			ym := monthsAgoYM(i)
 			energy := 3000 + rand.Float64()*20000
 			price := 400 + rand.Float64()*60
 			bill := energy * price
 			peakRatio := 0.3 + rand.Float64()*0.3
 			score := 60 + rand.Float64()*40
-			risk := risks[rand.Intn(len(risks))]
+			risk := risks[rand.IntN(len(risks))]
 			tags := []string{"active"}
 			if score > 85 {
 				tags = append(tags, "high_value")

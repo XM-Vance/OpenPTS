@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 )
 
@@ -39,8 +39,7 @@ type CarbonProductSummary struct {
 
 // CarbonRepository 碳交易行情仓储。
 //
-// 碳价为全国统一行情（CEA/CCER 为国内碳市场，EUA 为欧盟碳市场），属共享参考数据，
-// 因此本仓储不做省份(org_id)隔离 —— 各省与总部看到同一套碳价，「全部省」视图下亦可读写。
+// carbon_quotes 已加 org_id（迁移 0106），按活跃组织隔离读写。
 type CarbonRepository struct{ pool *Pool }
 
 func NewCarbonRepository(pool *Pool) *CarbonRepository { return &CarbonRepository{pool: pool} }
@@ -72,12 +71,19 @@ func (r *CarbonRepository) List(ctx context.Context, product string, days int) (
 	q := `SELECT id, product, trade_date, open_price, high_price, low_price,
 	             close_price, volume, turnover, created_at
 	      FROM carbon_quotes WHERE trade_date >= $1`
+	n := 2
+	if org, scoped := OrgFilter(ctx); scoped {
+		args = append(args, org)
+		q += fmt.Sprintf(" AND org_id = $%d::uuid", n)
+		n++
+	}
 	if product != "" {
 		if !carbonProductValid(product) {
 			return nil, fmt.Errorf("未知的碳产品: %s", product)
 		}
 		args = append(args, product)
-		q += fmt.Sprintf(" AND product = $%d", len(args))
+		q += fmt.Sprintf(" AND product = $%d", n)
+		n++
 	}
 	q += " ORDER BY trade_date DESC, product"
 
@@ -109,18 +115,28 @@ func (r *CarbonRepository) Summary(ctx context.Context) ([]*CarbonProductSummary
 		prevClose *float64
 	}
 	latestByProduct := map[string]*latest{}
-	rows, err := r.pool.Query(ctx, `
+	// 行情按活跃组织隔离（carbon_quotes 已加 org_id）。
+	args1 := []any{}
+	q1 := `
 		WITH ranked AS (
 		    SELECT product, trade_date, close_price, volume,
 		           ROW_NUMBER() OVER (PARTITION BY product ORDER BY trade_date DESC) AS rn
-		    FROM carbon_quotes
+		    FROM carbon_quotes`
+	n := 1
+	if org, scoped := OrgFilter(ctx); scoped {
+		args1 = append(args1, org)
+		q1 += fmt.Sprintf(" WHERE org_id = $%d::uuid", n)
+		n++
+	}
+	q1 += `
 		)
 		SELECT product,
 		       MAX(trade_date)  FILTER (WHERE rn = 1) AS latest_date,
 		       MAX(close_price) FILTER (WHERE rn = 1) AS close,
 		       MAX(volume)      FILTER (WHERE rn = 1) AS volume,
 		       MAX(close_price) FILTER (WHERE rn = 2) AS prev_close
-		FROM ranked WHERE rn <= 2 GROUP BY product`)
+		FROM ranked WHERE rn <= 2 GROUP BY product`
+	rows, err := r.pool.Query(ctx, q1, args1...)
 	if err != nil {
 		return nil, err
 	}
@@ -143,9 +159,16 @@ func (r *CarbonRepository) Summary(ctx context.Context) ([]*CarbonProductSummary
 	type hilo struct{ hi, lo *float64 }
 	hiloByProduct := map[string]*hilo{}
 	yearAgo := time.Now().AddDate(-1, 0, 0)
-	rows2, err := r.pool.Query(ctx, `
+	args2 := []any{yearAgo}
+	q2 := `
 		SELECT product, MAX(high_price) AS hi, MIN(low_price) AS lo
-		FROM carbon_quotes WHERE trade_date >= $1 GROUP BY product`, yearAgo)
+		FROM carbon_quotes WHERE trade_date >= $1`
+	if org, scoped := OrgFilter(ctx); scoped {
+		args2 = append(args2, org)
+		q2 += fmt.Sprintf(" AND org_id = $%d::uuid", len(args2))
+	}
+	q2 += " GROUP BY product"
+	rows2, err := r.pool.Query(ctx, q2, args2...)
 	if err != nil {
 		return nil, err
 	}
@@ -193,6 +216,11 @@ func (r *CarbonRepository) Summary(ctx context.Context) ([]*CarbonProductSummary
 // GenerateDemo 为 CEA/CCER/EUA 各生成约 180 天的演示行情（随机游走 OHLC）。
 // 返回写入的记录条数。ON CONFLICT 幂等，可重复调用。
 func (r *CarbonRepository) GenerateDemo(ctx context.Context) (int, error) {
+	// 演示数据回填：未选具体省（总部「全部省」）时回退 FJ，与回填脚本一致。
+	org, scoped := OrgFilter(ctx)
+	if !scoped {
+		org = "FJ"
+	}
 	const days = 180
 	// 各产品的起步价与日成交量区间（贴近真实量级）。
 	base := map[string]float64{"CEA": 75, "CCER": 62, "EUA": 70}
@@ -222,13 +250,13 @@ func (r *CarbonRepository) GenerateDemo(ctx context.Context) (int, error) {
 			turnover := round2(volume * closeP)
 			if _, err := r.pool.Exec(ctx,
 				`INSERT INTO carbon_quotes
-				   (product, trade_date, open_price, high_price, low_price, close_price, volume, turnover)
-				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-				 ON CONFLICT (product, trade_date) DO UPDATE SET
+				   (product, trade_date, open_price, high_price, low_price, close_price, volume, turnover, is_demo, org_id)
+				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE,$9::uuid)
+				 ON CONFLICT (org_id, product, trade_date) DO UPDATE SET
 				   open_price = EXCLUDED.open_price, high_price = EXCLUDED.high_price,
 				   low_price = EXCLUDED.low_price, close_price = EXCLUDED.close_price,
-				   volume = EXCLUDED.volume, turnover = EXCLUDED.turnover`,
-				p.Code, d, openP, highP, lowP, closeP, volume, turnover); err != nil {
+				   volume = EXCLUDED.volume, turnover = EXCLUDED.turnover, is_demo = TRUE`,
+				p.Code, d, openP, highP, lowP, closeP, volume, turnover, org); err != nil {
 				return cnt, err
 			}
 			cnt++

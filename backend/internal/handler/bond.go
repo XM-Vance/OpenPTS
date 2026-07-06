@@ -108,6 +108,9 @@ func (h *BondHandler) Create(c *gin.Context) {
 	}
 	bond, err := h.repo.Create(c.Request.Context(), req.toInput(), createdBy)
 	if err != nil {
+		if respondOrgRequired(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建失败"})
 		return
 	}
@@ -128,6 +131,9 @@ func (h *BondHandler) Update(c *gin.Context) {
 	}
 	bond, err := h.repo.Update(c.Request.Context(), id, req.toInput())
 	if err != nil {
+		if respondOrgRequired(c, err) {
+			return
+		}
 		if errors.Is(err, db.ErrBondNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "保函不存在"})
 			return
@@ -146,6 +152,9 @@ func (h *BondHandler) Delete(c *gin.Context) {
 		return
 	}
 	if err := h.repo.Delete(c.Request.Context(), id); err != nil {
+		if respondOrgRequired(c, err) {
+			return
+		}
 		if errors.Is(err, db.ErrBondNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "保函不存在"})
 			return

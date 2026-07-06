@@ -5,7 +5,7 @@ package db
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"time"
 )
@@ -29,6 +29,41 @@ type RollingTradeRepository struct{ pool *Pool }
 
 func NewRollingTradeRepository(pool *Pool) *RollingTradeRepository {
 	return &RollingTradeRepository{pool: pool}
+}
+
+// RollingStats 滚动撮合交易统计（供 /trade/rolling/statistics 端点）。
+type RollingStats struct {
+	BuyVolume   float64 `json:"buyVolume"`   // 买入总量(MWh)
+	SellVolume  float64 `json:"sellVolume"`  // 卖出总量(MWh)
+	NetVolume   float64 `json:"netVolume"`   // 净成交量(卖-买)
+	MonthlyTotal float64 `json:"monthlyTotal"` // 当月成交总量(MWh)
+}
+
+// Statistics 按 days 天窗口聚合滚动撮合统计。
+func (r *RollingTradeRepository) Statistics(ctx context.Context, days int) (*RollingStats, error) {
+	if days <= 0 || days > 90 {
+		days = 7
+	}
+	since := time.Now().AddDate(0, 0, -days)
+	args := []any{since}
+	q := `SELECT
+			COALESCE(SUM(energy_mw) FILTER (WHERE side='buy'), 0),
+			COALESCE(SUM(energy_mw) FILTER (WHERE side='sell'), 0),
+			COALESCE(SUM(cleared_energy_mw) FILTER (WHERE status='cleared'), 0)
+		FROM rolling_trades WHERE trade_date >= $1`
+	idx := 2
+	if org, scoped := OrgFilter(ctx); scoped {
+		args = append(args, org)
+		q += fmt.Sprintf(" AND org_id = $%d::uuid", idx)
+		idx++
+	}
+	var s RollingStats
+	if err := r.pool.QueryRow(ctx, q, args...).Scan(
+		&s.BuyVolume, &s.SellVolume, &s.MonthlyTotal); err != nil {
+		return nil, err
+	}
+	s.NetVolume = s.SellVolume - s.BuyVolume
+	return &s, nil
 }
 
 func (r *RollingTradeRepository) List(ctx context.Context, days, limit int) ([]*RollingTrade, error) {
@@ -70,7 +105,7 @@ func (r *RollingTradeRepository) List(ctx context.Context, days, limit int) ([]*
 }
 
 func (r *RollingTradeRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
@@ -88,7 +123,7 @@ func (r *RollingTradeRepository) GenerateDemo(ctx context.Context) (int, error) 
 			for _, side := range []string{"buy", "sell"} {
 				energy := 50 + rand.Float64()*200
 				declPrice := 380 + rand.Float64()*80
-				status := statuses[rand.Intn(len(statuses))]
+				status := statuses[rand.IntN(len(statuses))]
 				var clearedE, clearedP float64
 				switch status {
 				case "cleared":
@@ -102,7 +137,7 @@ func (r *RollingTradeRepository) GenerateDemo(ctx context.Context) (int, error) 
 					clearedP = 0
 				}
 				b := len(args)
-				ph = append(ph, fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)",
+				ph = append(ph, fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,TRUE)",
 					b+1, b+2, b+3, b+4, b+5, b+6, b+7, b+8, b+9))
 				args = append(args, date, sess, side, energy, declPrice, clearedP, clearedE, status, orgID)
 			}
@@ -115,7 +150,7 @@ func (r *RollingTradeRepository) GenerateDemo(ctx context.Context) (int, error) 
 	if _, err := r.pool.Exec(ctx,
 		`INSERT INTO rolling_trades
 		   (trade_date, trade_session, side, energy_mw, declared_price,
-		    cleared_price, cleared_energy_mw, status, org_id)
+		    cleared_price, cleared_energy_mw, status, org_id, is_demo)
 		 VALUES `+strings.Join(ph, ","),
 		args...); err != nil {
 		return 0, err

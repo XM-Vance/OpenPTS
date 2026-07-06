@@ -4,7 +4,7 @@ package db
 
 import (
 	"context"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 )
 
@@ -76,7 +76,7 @@ func (r *WeatherRepository) GenerateDemo(ctx context.Context) (int, error) {
 			}
 			wind := 5 + rand.Float64()*20
 			lf := 0.85 + rand.Float64()*0.3
-			desc := descs[rand.Intn(len(descs))]
+			desc := descs[rand.IntN(len(descs))]
 			if _, err := r.pool.Exec(ctx,
 				`INSERT INTO weather_data
 				   (obs_date, location, temp_high, temp_low, humidity, precip_mm,

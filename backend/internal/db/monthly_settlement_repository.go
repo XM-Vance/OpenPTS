@@ -5,23 +5,25 @@ package db
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // ─────────────── D1 月度结算 ───────────────
 
 type MonthlySettlement struct {
-	ID               string    `json:"id"`
-	OperatingMonth   string    `json:"operating_month"`
-	SettledEnergyMWh float64   `json:"settled_energy_mwh"`
-	EnergyFee        float64   `json:"energy_fee"`
-	CapacityFee      float64   `json:"capacity_fee"`
-	AncillaryFee     float64   `json:"ancillary_fee"`
-	PolicySubsidy    float64   `json:"policy_subsidy"`
-	TotalFee         float64   `json:"total_fee"`
-	Version          string    `json:"version"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID               string          `json:"id"`
+	OperatingMonth   string          `json:"operating_month"`
+	SettledEnergyMWh float64         `json:"settled_energy_mwh"`
+	EnergyFee        decimal.Decimal `json:"energy_fee"`     // P4: numeric(18,4)
+	CapacityFee      decimal.Decimal `json:"capacity_fee"`   // P4: numeric(18,4)
+	AncillaryFee     decimal.Decimal `json:"ancillary_fee"`  // P4: numeric(18,4)
+	PolicySubsidy    decimal.Decimal `json:"policy_subsidy"` // P4: numeric(18,4)
+	TotalFee         decimal.Decimal `json:"total_fee"`      // P4: = energy+capacity+ancillary 精确
+	Version          string          `json:"version"`
+	CreatedAt        time.Time       `json:"created_at"`
 }
 
 type MonthlySettlementRepository struct{ pool *Pool }
@@ -64,17 +66,18 @@ func (r *MonthlySettlementRepository) List(ctx context.Context, limit int) ([]*M
 }
 
 // Upsert 写入/更新某月结算（文档「确认入库」等真实数据来源使用）。
-// 写操作要求具体活跃省；同省同月覆盖更新。
+// 写操作要求具体活跃组织；同省同月覆盖更新。
 func (r *MonthlySettlementRepository) Upsert(ctx context.Context, operatingMonth string,
 	energyMWh, energyFee, capacityFee, ancillaryFee, subsidy, totalFee float64, version string) error {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return err
 	}
 	if version == "" {
 		version = "IMPORTED"
 	}
-	_, err := r.pool.Exec(ctx,
+	// P4: 金额列为 numeric，需以 decimal 写入（pgx 已注册 decimal 编解码，float 不再直接编码）。
+	_, err = r.pool.Exec(ctx,
 		`INSERT INTO batch_monthly_settlement
 		   (operating_month, settled_energy_mwh, energy_fee, capacity_fee, ancillary_fee,
 		    policy_subsidy, total_fee, version, org_id)
@@ -84,12 +87,15 @@ func (r *MonthlySettlementRepository) Upsert(ctx context.Context, operatingMonth
 		   energy_fee = EXCLUDED.energy_fee, capacity_fee = EXCLUDED.capacity_fee,
 		   ancillary_fee = EXCLUDED.ancillary_fee, policy_subsidy = EXCLUDED.policy_subsidy,
 		   total_fee = EXCLUDED.total_fee, version = EXCLUDED.version`,
-		operatingMonth, energyMWh, energyFee, capacityFee, ancillaryFee, subsidy, totalFee, version, org)
+		operatingMonth, energyMWh,
+		decimal.NewFromFloat(energyFee), decimal.NewFromFloat(capacityFee),
+		decimal.NewFromFloat(ancillaryFee), decimal.NewFromFloat(subsidy),
+		decimal.NewFromFloat(totalFee), version, org)
 	return err
 }
 
 func (r *MonthlySettlementRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
@@ -98,17 +104,16 @@ func (r *MonthlySettlementRepository) GenerateDemo(ctx context.Context) (int, er
 			return 0, fmt.Errorf("resolve default org: %w", err)
 		}
 	}
-	now := time.Now()
 	cnt := 0
 	for i := 0; i < 12; i++ {
-		t := now.AddDate(0, -i, 0)
-		ym := t.Format("2006-01")
-		energy := 80000.0 + rand.Float64()*40000 // 80k~120k MWh
-		energyFee := energy * (320 + rand.Float64()*60)
-		capacity := energy * 35
-		ancillary := energy * 8
-		subsidy := energyFee * 0.02
-		total := energyFee + capacity + ancillary
+		ym := monthsAgoYM(i)
+		energy := 80000.0 + rand.Float64()*40000 // 80k~120k MWh（float）
+		// P4: 各项费用 decimal（分项舍 4 位再汇总），total_fee = energy+capacity+ancillary 精确。
+		energyFee := decimal.NewFromFloat(energy).Mul(decimal.NewFromFloat(320 + rand.Float64()*60)).Round(4)
+		capacity := decimal.NewFromFloat(energy).Mul(decimal.NewFromInt(35)).Round(4)
+		ancillary := decimal.NewFromFloat(energy).Mul(decimal.NewFromInt(8)).Round(4)
+		subsidy := energyFee.Mul(decimal.NewFromFloat(0.02)).Round(4)
+		total := energyFee.Add(capacity).Add(ancillary)
 		if _, err := r.pool.Exec(ctx,
 			`INSERT INTO batch_monthly_settlement
 			   (operating_month, settled_energy_mwh, energy_fee, capacity_fee, ancillary_fee,

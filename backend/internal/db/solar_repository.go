@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 )
 
 // ── 站点 ──
@@ -26,28 +27,28 @@ type SolarStation struct {
 // ── 发电预测 ──
 
 type SolarGenerationForecast struct {
-	ID              uuid.UUID  `json:"id"`
-	StationID       uuid.UUID  `json:"station_id"`
-	ForecastDate    time.Time  `json:"forecast_date"`
-	Period          int        `json:"period"`
-	ForecastPowerKW float64    `json:"forecast_power_kw"`
-	ActualPowerKW   *float64   `json:"actual_power_kw,omitempty"`
-	DeviationRate   *float64   `json:"deviation_rate,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
+	ID              uuid.UUID `json:"id"`
+	StationID       uuid.UUID `json:"station_id"`
+	ForecastDate    time.Time `json:"forecast_date"`
+	Period          int       `json:"period"`
+	ForecastPowerKW float64   `json:"forecast_power_kw"`
+	ActualPowerKW   *float64  `json:"actual_power_kw,omitempty"`
+	DeviationRate   *float64  `json:"deviation_rate,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // ── 收益结算 ──
 
 type SolarRevenueSettlement struct {
-	ID              uuid.UUID `json:"id"`
-	StationID       uuid.UUID `json:"station_id"`
-	SettlementMonth string    `json:"settlement_month"`
-	EnergyKWh       float64   `json:"energy_kwh"`
-	Revenue         float64   `json:"revenue"`
-	AvgPrice        float64   `json:"avg_price"`
-	Subsidy         float64   `json:"subsidy"`
-	NetIncome       float64   `json:"net_income"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID              uuid.UUID       `json:"id"`
+	StationID       uuid.UUID       `json:"station_id"`
+	SettlementMonth string          `json:"settlement_month"`
+	EnergyKWh       float64         `json:"energy_kwh"`
+	Revenue         decimal.Decimal `json:"revenue"`    // P4: numeric(18,4)
+	AvgPrice        decimal.Decimal `json:"avg_price"`  // P4: numeric(18,4)
+	Subsidy         decimal.Decimal `json:"subsidy"`    // P4: numeric(18,4)
+	NetIncome       decimal.Decimal `json:"net_income"` // P4: numeric(18,4)
+	CreatedAt       time.Time       `json:"created_at"`
 }
 
 // ── Repository ──
@@ -108,16 +109,16 @@ func (r *SolarRepository) GetStation(ctx context.Context, id uuid.UUID) (*SolarS
 }
 
 func (r *SolarRepository) CreateStation(ctx context.Context, name, location string, capacityKW float64, status string, installedDate *time.Time, lat, lng *float64) (*SolarStation, error) {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return nil, ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return nil, err
 	}
 	const q = `
 		INSERT INTO solar_stations (station_name, location, capacity_kw, status, installed_date, latitude, longitude, org_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8::uuid)
 		RETURNING ` + solarStationCols
 	var s SolarStation
-	err := r.pool.QueryRow(ctx, q, name, location, capacityKW, status, installedDate, lat, lng, org).
+	err = r.pool.QueryRow(ctx, q, name, location, capacityKW, status, installedDate, lat, lng, org).
 		Scan(&s.ID, &s.StationName, &s.Location, &s.CapacityKW,
 			&s.Status, &s.InstalledDate, &s.Latitude, &s.Longitude, &s.CreatedAt)
 	if err != nil {
@@ -127,12 +128,17 @@ func (r *SolarRepository) CreateStation(ctx context.Context, name, location stri
 }
 
 func (r *SolarRepository) UpdateStation(ctx context.Context, id uuid.UUID, name, location string, capacityKW float64, status string, installedDate *time.Time, lat, lng *float64) (*SolarStation, error) {
-	const q = `
+	q := `
 		UPDATE solar_stations SET station_name=$2, location=$3, capacity_kw=$4, status=$5, installed_date=$6, latitude=$7, longitude=$8
-		WHERE id=$1
-		RETURNING ` + solarStationCols
+		WHERE id=$1`
+	args := []any{id, name, location, capacityKW, status, installedDate, lat, lng}
+	if org, scoped := OrgFilter(ctx); scoped { // 防按 id 改他省电站
+		args = append(args, org)
+		q += fmt.Sprintf(" AND org_id = $%d::uuid", len(args))
+	}
+	q += " RETURNING " + solarStationCols
 	var s SolarStation
-	err := r.pool.QueryRow(ctx, q, id, name, location, capacityKW, status, installedDate, lat, lng).
+	err := r.pool.QueryRow(ctx, q, args...).
 		Scan(&s.ID, &s.StationName, &s.Location, &s.CapacityKW,
 			&s.Status, &s.InstalledDate, &s.Latitude, &s.Longitude, &s.CreatedAt)
 	if err != nil {
@@ -142,8 +148,13 @@ func (r *SolarRepository) UpdateStation(ctx context.Context, id uuid.UUID, name,
 }
 
 func (r *SolarRepository) DeleteStation(ctx context.Context, id uuid.UUID) error {
-	const q = `DELETE FROM solar_stations WHERE id = $1`
-	_, err := r.pool.Exec(ctx, q, id)
+	q := `DELETE FROM solar_stations WHERE id = $1`
+	args := []any{id}
+	if org, scoped := OrgFilter(ctx); scoped { // 防按 id 删他省电站
+		args = append(args, org)
+		q += fmt.Sprintf(" AND org_id = $%d::uuid", len(args))
+	}
+	_, err := r.pool.Exec(ctx, q, args...)
 	return err
 }
 
@@ -194,9 +205,9 @@ func (r *SolarRepository) ListForecast(ctx context.Context, stationID *uuid.UUID
 }
 
 func (r *SolarRepository) UpsertForecast(ctx context.Context, stationID uuid.UUID, forecastDate time.Time, period int, forecastKW, actualKW, deviation *float64) error {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return err
 	}
 	const q = `
 		INSERT INTO solar_generation_forecast (station_id, forecast_date, period, forecast_power_kw, actual_power_kw, deviation_rate, org_id)
@@ -205,7 +216,7 @@ func (r *SolarRepository) UpsertForecast(ctx context.Context, stationID uuid.UUI
 			forecast_power_kw = EXCLUDED.forecast_power_kw,
 			actual_power_kw   = EXCLUDED.actual_power_kw,
 			deviation_rate    = EXCLUDED.deviation_rate`
-	_, err := r.pool.Exec(ctx, q, stationID, forecastDate, period, forecastKW, actualKW, deviation, org)
+	_, err = r.pool.Exec(ctx, q, stationID, forecastDate, period, forecastKW, actualKW, deviation, org)
 	return err
 }
 
@@ -256,9 +267,9 @@ func (r *SolarRepository) ListRevenue(ctx context.Context, stationID *uuid.UUID,
 }
 
 func (r *SolarRepository) UpsertRevenue(ctx context.Context, stationID uuid.UUID, month string, energyKWh, revenue, avgPrice, subsidy, netIncome float64) error {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return err
 	}
 	const q = `
 		INSERT INTO solar_revenue_settlement (station_id, settlement_month, energy_kwh, revenue, avg_price, subsidy, net_income, org_id)
@@ -269,6 +280,9 @@ func (r *SolarRepository) UpsertRevenue(ctx context.Context, stationID uuid.UUID
 			avg_price  = EXCLUDED.avg_price,
 			subsidy    = EXCLUDED.subsidy,
 			net_income = EXCLUDED.net_income`
-	_, err := r.pool.Exec(ctx, q, stationID, month, energyKWh, revenue, avgPrice, subsidy, netIncome, org)
+	// P4: 金额列为 numeric，以 decimal 写入（pgx 已注册 decimal 编解码）。
+	_, err = r.pool.Exec(ctx, q, stationID, month, energyKWh,
+		decimal.NewFromFloat(revenue), decimal.NewFromFloat(avgPrice),
+		decimal.NewFromFloat(subsidy), decimal.NewFromFloat(netIncome), org)
 	return err
 }

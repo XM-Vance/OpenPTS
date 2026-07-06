@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 var ErrApprovalNotFound = errors.New("审批请求不存在")
@@ -51,6 +54,11 @@ func NewApprovalRepository(pool *Pool) *ApprovalRepository {
 	return &ApprovalRepository{pool: pool}
 }
 
+// BeginTx 在审批主连接池上开启事务，供 Approve 单事务原子化使用（P0-B2）。
+func (r *ApprovalRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	return r.pool.Begin(ctx)
+}
+
 // 合法的状态流转表（from → toSet）。
 var validTransitions = map[string]map[string]bool{
 	"draft":    {"pending": true, "withdrawn": true},
@@ -61,21 +69,25 @@ var validTransitions = map[string]map[string]bool{
 }
 
 func (r *ApprovalRepository) Create(ctx context.Context, in ApprovalInput) (*Approval, error) {
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if in.Payload == nil {
 		in.Payload = json.RawMessage("{}")
 	}
 	var a Approval
-	err := r.pool.QueryRow(ctx, `
+	err = r.pool.QueryRow(ctx, `
 		INSERT INTO approval_requests
-		  (resource, resource_id, title, payload, status, submitted_by)
-		VALUES ($1, $2, $3, $4, 'pending', $5::uuid)
+		  (resource, resource_id, title, payload, status, submitted_by, org_id)
+		VALUES ($1, $2, $3, $4, 'pending', $5::uuid, $6)
 		RETURNING id, resource, resource_id, title, payload, status,
 		          submitted_by::text,
 		          (SELECT username FROM users WHERE id = approval_requests.submitted_by),
 		          reviewed_by::text,
 		          (SELECT username FROM users WHERE id = approval_requests.reviewed_by),
 		          review_note, reviewed_at, created_at, updated_at`,
-		in.Resource, in.ResourceID, in.Title, in.Payload, in.SubmittedBy).
+		in.Resource, in.ResourceID, in.Title, in.Payload, in.SubmittedBy, org).
 		Scan(&a.ID, &a.Resource, &a.ResourceID, &a.Title, &a.Payload, &a.Status,
 			&a.SubmittedBy, &a.SubmittedByName,
 			&a.ReviewedBy, &a.ReviewedByName,
@@ -87,8 +99,13 @@ func (r *ApprovalRepository) Create(ctx context.Context, in ApprovalInput) (*App
 }
 
 func (r *ApprovalRepository) Get(ctx context.Context, id string) (*Approval, error) {
-	var a Approval
-	err := r.pool.QueryRow(ctx, `
+	return r.get(ctx, r.pool, id)
+}
+
+// get 内部复用：可在事务（pgx.Tx）或连接池（*Pool）上执行，支持 org 过滤。
+func (r *ApprovalRepository) get(ctx context.Context, q Executor, id string) (*Approval, error) {
+	args := []any{id}
+	query := `
 		SELECT ar.id, ar.resource, ar.resource_id, ar.title, ar.payload, ar.status,
 		       ar.submitted_by::text, u_sub.username,
 		       ar.reviewed_by::text, u_rev.username,
@@ -96,7 +113,13 @@ func (r *ApprovalRepository) Get(ctx context.Context, id string) (*Approval, err
 		FROM approval_requests ar
 		LEFT JOIN users u_sub ON u_sub.id = ar.submitted_by
 		LEFT JOIN users u_rev ON u_rev.id = ar.reviewed_by
-		WHERE ar.id = $1`, id).
+		WHERE ar.id = $1`
+	if org, scoped := OrgFilter(ctx); scoped {
+		args = append(args, org)
+		query += fmt.Sprintf(" AND ar.org_id = $%d::uuid", len(args))
+	}
+	var a Approval
+	err := q.QueryRow(ctx, query, args...).
 		Scan(&a.ID, &a.Resource, &a.ResourceID, &a.Title, &a.Payload, &a.Status,
 			&a.SubmittedBy, &a.SubmittedByName,
 			&a.ReviewedBy, &a.ReviewedByName,
@@ -118,6 +141,10 @@ func (r *ApprovalRepository) List(ctx context.Context, f ApprovalFilter) ([]*App
 	}
 	args := []any{}
 	conds := []string{}
+	if org, scoped := OrgFilter(ctx); scoped {
+		args = append(args, org)
+		conds = append(conds, "ar.org_id = $"+itoaApproval(len(args))+"::uuid")
+	}
 	if f.Status != "" {
 		statuses := strings.Split(f.Status, ",")
 		ph := []string{}
@@ -213,7 +240,8 @@ func (r *ApprovalRepository) ListTemplates(ctx context.Context, resource string)
 
 // ByResource 列出同一资源（按 resource+resource_id）的所有审批历史。
 func (r *ApprovalRepository) ByResource(ctx context.Context, resource, resourceID string) ([]*Approval, error) {
-	rows, err := r.pool.Query(ctx, `
+	args := []any{resource, resourceID}
+	query := `
 		SELECT ar.id, ar.resource, ar.resource_id, ar.title, ar.payload, ar.status,
 		       ar.submitted_by::text, u_sub.username,
 		       ar.reviewed_by::text, u_rev.username,
@@ -221,9 +249,13 @@ func (r *ApprovalRepository) ByResource(ctx context.Context, resource, resourceI
 		FROM approval_requests ar
 		LEFT JOIN users u_sub ON u_sub.id = ar.submitted_by
 		LEFT JOIN users u_rev ON u_rev.id = ar.reviewed_by
-		WHERE ar.resource = $1 AND ar.resource_id = $2
-		ORDER BY ar.created_at DESC
-		LIMIT 100`, resource, resourceID)
+		WHERE ar.resource = $1 AND ar.resource_id = $2`
+	if org, scoped := OrgFilter(ctx); scoped {
+		args = append(args, org)
+		query += fmt.Sprintf(" AND ar.org_id = $%d::uuid", len(args))
+	}
+	query += " ORDER BY ar.created_at DESC LIMIT 100"
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -243,8 +275,25 @@ func (r *ApprovalRepository) ByResource(ctx context.Context, resource, resourceI
 }
 
 // Transition 严格状态机：从当前状态流转到目标态。
+// 注意：此方法仍为 read-then-write，仅用于 Reject/Withdraw（无副作用落库）。
+// Approve 必须用 TransitionTx（事务 + 乐观锁），见 handler/approval.go。
 func (r *ApprovalRepository) Transition(ctx context.Context, id, target, reviewer, note string) (*Approval, error) {
-	cur, err := r.Get(ctx, id)
+	return r.transitionOn(ctx, r.pool, id, target, reviewer, note)
+}
+
+// GetTx / TransitionTx 在指定事务上执行，供 Approve 单事务原子化使用（P0-B2）。
+func (r *ApprovalRepository) GetTx(ctx context.Context, ex Executor, id string) (*Approval, error) {
+	return r.get(ctx, ex, id)
+}
+func (r *ApprovalRepository) TransitionTx(ctx context.Context, ex Executor, id, target, reviewer, note string) (*Approval, error) {
+	return r.transitionOn(ctx, ex, id, target, reviewer, note)
+}
+
+// transitionOn 在指定执行器（连接池或事务）上做状态机流转。
+// UPDATE 带 AND status = $原态 乐观锁：并发审批只有一方能改成功，另一方返回
+// ErrInvalidApprovalTransition，消除 P0-B8 的 TOCTOU 竞态。
+func (r *ApprovalRepository) transitionOn(ctx context.Context, ex Executor, id, target, reviewer, note string) (*Approval, error) {
+	cur, err := r.get(ctx, ex, id)
 	if err != nil {
 		return nil, err
 	}
@@ -267,19 +316,23 @@ func (r *ApprovalRepository) Transition(ctx context.Context, id, target, reviewe
 			noteArg = note
 		}
 	}
-	_, err = r.pool.Exec(ctx, `
+	tag, err := ex.Exec(ctx, `
 		UPDATE approval_requests
 		SET status = $1,
 		    reviewed_by = COALESCE($2::uuid, reviewed_by),
 		    review_note = COALESCE($3, review_note),
 		    reviewed_at = `+reviewedAtSQL+`,
 		    updated_at = now()
-		WHERE id = $4`,
-		target, reviewerArg, noteArg, id)
+		WHERE id = $4 AND status = $5`,
+		target, reviewerArg, noteArg, id, cur.Status)
 	if err != nil {
 		return nil, err
 	}
-	return r.Get(ctx, id)
+	if tag.RowsAffected() == 0 {
+		// 并发竞争：状态已被别人改掉，当前流转不再合法
+		return nil, ErrInvalidApprovalTransition
+	}
+	return r.get(ctx, ex, id)
 }
 
 func itoaApproval(n int) string {

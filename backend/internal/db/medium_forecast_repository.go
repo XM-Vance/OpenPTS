@@ -5,7 +5,7 @@ package db
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 )
 
@@ -66,7 +66,7 @@ func (r *MediumForecastRepository) List(ctx context.Context, limit int) ([]*Medi
 }
 
 func (r *MediumForecastRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
@@ -78,8 +78,7 @@ func (r *MediumForecastRepository) GenerateDemo(ctx context.Context) (int, error
 	cnt := 0
 	// 过去 6 月（含实测） + 未来 12 月（仅预测）
 	for i := 6; i >= -12; i-- {
-		t := time.Now().AddDate(0, -i, 0)
-		ym := t.Format("2006-01")
+		ym := monthsAgoYM(i)
 		predicted := 350000.0 + rand.Float64()*100000 // 350-450 GWh
 		var actual *float64
 		if i >= 0 { // 过去

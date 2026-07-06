@@ -38,6 +38,12 @@ func NewDashboardRepository(pool *Pool) *DashboardRepository {
 
 // orgClause returns "AND org_id = $N::uuid" and the args slice with org appended,
 // or returns the args unchanged if not scoped.
+//
+// 安全说明（审查报告 2.3 已核实）：
+//   - 列名 org_id 是硬编码常量，非用户输入——不存在 SQL 注入。
+//   - org 的值经 $N::uuid 占位符参数化绑定（append 到 args），非字符串内联。
+//   - 本文件内各处 fmt.Sprintf 仅用于拼接占位符编号（$%d）或整个 "AND org_id = $N::uuid"
+//     片段，拼接的都是常量 SQL 文本，不内联任何用户值。请勿改成字符串内联 org。
 func orgClause(org string, scoped bool, args []any) (string, []any) {
 	if !scoped {
 		return "", args
@@ -52,7 +58,7 @@ func (r *DashboardRepository) GetSummary(ctx context.Context) (*DashboardSummary
 	f, args := orgClause(org, scoped, nil)
 
 	q := fmt.Sprintf(`SELECT
-		(SELECT COUNT(*) FROM customers WHERE true%s),
+		(SELECT COUNT(*) FROM customers WHERE lifecycle_stage NOT IN ('intent','lead')%s),
 		(SELECT COUNT(*) FROM retail_contracts WHERE status = 'active'%s),
 		(SELECT COUNT(*) FROM retail_packages WHERE status = 'active'%s),
 		(SELECT COUNT(*) FROM customer_anomaly_alerts WHERE NOT acknowledged%s),
@@ -62,9 +68,9 @@ func (r *DashboardRepository) GetSummary(ctx context.Context) (*DashboardSummary
 		(SELECT COALESCE(SUM(revenue), 0) FROM storage_daily_operation
 		   WHERE operation_date > NOW()::date - INTERVAL '30 days'%s),
 		(SELECT COALESCE(SUM(revenue), 0) FROM frequency_regulation_clearing
-		   WHERE settlement_date > NOW()::date - INTERVAL '7 days'%s),
+		   WHERE settlement_date > NOW()::date - INTERVAL '7 days' AND COALESCE(is_demo, FALSE) = FALSE%s),
 		(SELECT total_energy_fee FROM settlement_daily
-		   WHERE version = 'PRELIMINARY'%s
+		   WHERE version = 'PRELIMINARY' AND COALESCE(is_demo, FALSE) = FALSE%s
 		   ORDER BY operating_date DESC LIMIT 1)`,
 		f, f, f, f, f, f, f, f, f)
 
@@ -82,7 +88,7 @@ func (r *DashboardRepository) GetSummary(ctx context.Context) (*DashboardSummary
 // GetSettlementSeries 最近 N 日批发结算总电费（PRELIMINARY 版本）。
 func (r *DashboardRepository) GetSettlementSeries(ctx context.Context, days int) ([]*DailySeriesPoint, error) {
 	org, scoped := OrgFilter(ctx)
-	since := time.Now().Truncate(24 * time.Hour).AddDate(0, 0, -days)
+	since := time.Now().Truncate(24*time.Hour).AddDate(0, 0, -days)
 	args := []any{since}
 	f := ""
 	if scoped {
@@ -114,7 +120,7 @@ func (r *DashboardRepository) GetSettlementSeries(ctx context.Context, days int)
 // GetFreqSeries 最近 N 日调频收益合计（AGC + AVC）。
 func (r *DashboardRepository) GetFreqSeries(ctx context.Context, days int) ([]*DailySeriesPoint, error) {
 	org, scoped := OrgFilter(ctx)
-	since := time.Now().Truncate(24 * time.Hour).AddDate(0, 0, -days)
+	since := time.Now().Truncate(24*time.Hour).AddDate(0, 0, -days)
 	args := []any{since}
 	f := ""
 	if scoped {

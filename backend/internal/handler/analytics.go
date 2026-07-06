@@ -19,10 +19,11 @@ import (
 type AnalyticsHandler struct {
 	repo     *db.AnalyticsRepository
 	custRepo *db.CustomerRepository
+	charRepo *db.LoadCharacteristicsExtRepository // 顺带填充 history/monthly-energy
 }
 
-func NewAnalyticsHandler(repo *db.AnalyticsRepository, custRepo *db.CustomerRepository) *AnalyticsHandler {
-	return &AnalyticsHandler{repo: repo, custRepo: custRepo}
+func NewAnalyticsHandler(repo *db.AnalyticsRepository, custRepo *db.CustomerRepository, charRepo *db.LoadCharacteristicsExtRepository) *AnalyticsHandler {
+	return &AnalyticsHandler{repo: repo, custRepo: custRepo, charRepo: charRepo}
 }
 
 // Stats GET /api/v1/analytics/alerts/stats
@@ -92,6 +93,12 @@ func (h *AnalyticsHandler) ListCharacteristics(c *gin.Context) {
 func (h *AnalyticsHandler) GenerateDemoData(c *gin.Context) {
 	ctx := c.Request.Context()
 
+	// 告警/特征写入按省隔离：必须先选具体省（总部「全部省」下落库会被拒）。
+	if _, err := db.MustScoped(ctx); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请先选择具体省份"})
+		return
+	}
+
 	customers, _, err := h.custRepo.List(ctx, db.CustomerListFilter{Limit: 50})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取客户失败"})
@@ -152,6 +159,10 @@ func (h *AnalyticsHandler) GenerateDemoData(c *gin.Context) {
 			return
 		}
 		chars++
+		// 顺带填充 analysis_history_log（每客户一条历史）+ customer_monthly_energy（12个月）
+		// 让 /load/characteristics/customer/:id/history 和 monthly-energy 有 demo 数据。
+		_ = h.charRepo.SeedHistory(ctx, cust.ID, today, tags, []string{"rule_load_profile", "rule_anomaly"})
+		_ = h.charRepo.SeedMonthlyEnergy(ctx, cust.ID, 10000+50000*rand.Float64())
 	}
 
 	// 2. 12 条随机告警

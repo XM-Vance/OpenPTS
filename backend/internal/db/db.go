@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -22,10 +24,15 @@ func openPool(ctx context.Context, dsn string, maxConns int32) (*pgxpool.Pool, e
 		return nil, fmt.Errorf("解析 DSN 失败: %w", err)
 	}
 	cfg.MaxConns = maxConns
-	cfg.MinConns = 5 // R7: 保持 5 个热连接，减少冷启动延迟
+	cfg.MinConns = 5                      // R7: 保持 5 个热连接，减少冷启动延迟
 	cfg.MaxConnLifetime = 5 * time.Minute // R7: 5 分钟回收，防止长连接累积问题
 	cfg.MaxConnIdleTime = 15 * time.Minute
 	cfg.HealthCheckPeriod = time.Minute
+	// P4: 为每个连接注册 shopspring/decimal 编解码，使 numeric 金额列与 decimal.Decimal 互转。
+	cfg.AfterConnect = func(_ context.Context, conn *pgx.Conn) error {
+		pgxdecimal.Register(conn.TypeMap())
+		return nil
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {

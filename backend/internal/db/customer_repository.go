@@ -29,6 +29,7 @@ type Customer struct {
 	CreatedAt time.Time       `json:"created_at"`
 	UpdatedAt time.Time       `json:"updated_at"`
 	OrgID     *string         `json:"org_id,omitempty"`
+	AgentID   *uuid.UUID      `json:"agent_id,omitempty"` // Phase 2：代理商 FK（取代 source 名字弱关联）
 }
 
 var ErrCustomerNotFound = errors.New("客户不存在")
@@ -43,6 +44,7 @@ type CustomerInput struct {
 	Tags      []string
 	Accounts  json.RawMessage
 	IsDemo    bool
+	AgentID   *uuid.UUID // Phase 2：所属代理商（可空）
 }
 
 // CustomerListFilter 列表过滤参数。
@@ -65,7 +67,7 @@ func NewCustomerRepository(pool *Pool) *CustomerRepository {
 // Pool 暴露底层连接池（用于 360 视图等聚合查询）。
 func (r *CustomerRepository) Pool() *Pool { return r.pool }
 
-const customerColumns = "id, user_name, short_name, location, source, manager, tags, accounts, is_demo, extra, created_by, created_at, updated_at"
+const customerColumns = "id, user_name, short_name, location, source, manager, tags, accounts, is_demo, extra, created_by, created_at, updated_at, agent_id"
 
 func (r *CustomerRepository) scan(row pgx.Row) (*Customer, error) {
 	var c Customer
@@ -73,7 +75,7 @@ func (r *CustomerRepository) scan(row pgx.Row) (*Customer, error) {
 	err := row.Scan(
 		&c.ID, &c.UserName, &c.ShortName, &c.Location, &c.Source, &c.Manager,
 		&c.Tags, &accounts, &c.IsDemo, &extra, &c.CreatedBy,
-		&c.CreatedAt, &c.UpdatedAt,
+		&c.CreatedAt, &c.UpdatedAt, &c.AgentID,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -107,6 +109,9 @@ func (r *CustomerRepository) List(ctx context.Context, f CustomerListFilter) ([]
 
 	where := make([]string, 0, 4)
 	args := make([]any, 0, 4)
+
+	// P1a: 客户档案只看正式/历史客户，排除意向/线索阶段（统一客户表后防漏）
+	where = append(where, "lifecycle_stage NOT IN ('intent','lead')")
 
 	// org 过滤
 	org, scoped := OrgFilter(ctx)
@@ -156,17 +161,17 @@ func (r *CustomerRepository) List(ctx context.Context, f CustomerListFilter) ([]
 }
 
 func (r *CustomerRepository) Create(ctx context.Context, in CustomerInput, createdBy *uuid.UUID) (*Customer, error) {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return nil, ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return nil, err
 	}
 	q := `INSERT INTO customers
-		(user_name, short_name, location, source, manager, tags, accounts, is_demo, created_by, org_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid)
+		(user_name, short_name, location, source, manager, tags, accounts, is_demo, created_by, org_id, agent_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid, $11)
 		RETURNING ` + customerColumns
 	return r.scan(r.pool.QueryRow(ctx, q,
 		in.UserName, nullStr(in.ShortName), nullStr(in.Location), nullStr(in.Source), nullStr(in.Manager),
-		tagsOrEmpty(in.Tags), accountsOrEmpty(in.Accounts), in.IsDemo, createdBy, org,
+		tagsOrEmpty(in.Tags), accountsOrEmpty(in.Accounts), in.IsDemo, createdBy, org, in.AgentID,
 	))
 }
 
@@ -174,11 +179,11 @@ func (r *CustomerRepository) Update(ctx context.Context, id uuid.UUID, in Custom
 	org, scoped := OrgFilter(ctx)
 	q := `UPDATE customers SET
 		user_name = $2, short_name = $3, location = $4, source = $5, manager = $6,
-		tags = $7, accounts = $8, is_demo = $9
+		tags = $7, accounts = $8, is_demo = $9, agent_id = $10
 		WHERE id = $1`
 	args := []any{id,
 		in.UserName, nullStr(in.ShortName), nullStr(in.Location), nullStr(in.Source), nullStr(in.Manager),
-		tagsOrEmpty(in.Tags), accountsOrEmpty(in.Accounts), in.IsDemo,
+		tagsOrEmpty(in.Tags), accountsOrEmpty(in.Accounts), in.IsDemo, in.AgentID,
 	}
 	if scoped {
 		q += fmt.Sprintf(" AND org_id = $%d::uuid", len(args)+1)

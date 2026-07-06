@@ -3,6 +3,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -25,15 +26,23 @@ func NewPriceRepository(pool *Pool) *PriceRepository {
 func (r *PriceRepository) GetRecentDayAheadCurves(
 	ctx context.Context, before time.Time, limit int,
 ) ([]*DailyPriceCurve, error) {
-	const q = `
+	// 现货价分省运营：按活跃组织过滤（总部「全部省」不过滤）。
+	q := `
 		SELECT date, array_agg(price_da::float8 ORDER BY period) AS curve
 		FROM day_ahead_spot_price
-		WHERE date < $1 AND price_da IS NOT NULL
+		WHERE date < $1 AND price_da IS NOT NULL`
+	args := []any{before}
+	if org, scoped := OrgFilter(ctx); scoped {
+		args = append(args, org)
+		q += fmt.Sprintf(" AND org_id = $%d::uuid", len(args))
+	}
+	args = append(args, limit)
+	q += fmt.Sprintf(`
 		GROUP BY date
 		HAVING count(*) >= 48
 		ORDER BY date DESC
-		LIMIT $2`
-	rows, err := r.pool.Query(ctx, q, before, limit)
+		LIMIT $%d`, len(args))
+	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -62,11 +71,16 @@ func (r *PriceRepository) GetRecentDayAheadCurves(
 func (r *PriceRepository) UpsertDayAheadPrice(
 	ctx context.Context, d time.Time, period int, priceDA float64,
 ) error {
+	org, err := MustScoped(ctx) // 现货价须落到具体省
+	if err != nil {
+		return err
+	}
+	// ON CONFLICT 对齐真实唯一键 (org_id, date, period)（0052 改造遗留，原写 (date,period) 会 42P10）。
 	const q = `
-		INSERT INTO day_ahead_spot_price (date, period, price_da)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (date, period)
+		INSERT INTO day_ahead_spot_price (date, period, price_da, org_id)
+		VALUES ($1, $2, $3, $4::uuid)
+		ON CONFLICT (org_id, date, period)
 		DO UPDATE SET price_da = EXCLUDED.price_da`
-	_, err := r.pool.Exec(ctx, q, d, period, priceDA)
+	_, err = r.pool.Exec(ctx, q, d, period, priceDA, org)
 	return err
 }

@@ -5,10 +5,13 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // ─────────────── E1 意向客户 ───────────────
@@ -43,31 +46,42 @@ func NewIntentCustomerRepository(pool *Pool) *IntentCustomerRepository {
 	return &IntentCustomerRepository{pool: pool}
 }
 
-// CreateBasic 仅凭名称新建意向客户（文档「确认入库」用），状态 pending。
-// 写操作要求具体活跃省。
+// CreateBasic 仅凭名称新建意向客户（文档「确认入库」用）。
+// Phase 1b 起：意向客户即统一 customers 表中 lifecycle_stage='intent' 的行；写操作要求具体活跃组织。
 func (r *IntentCustomerRepository) CreateBasic(ctx context.Context, name string) error {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return err
 	}
-	_, err := r.pool.Exec(ctx, `
-		INSERT INTO intent_customers (customer_name, meters, status, org_id)
-		VALUES ($1, '[]'::jsonb, 'pending', $2::uuid)
-		ON CONFLICT DO NOTHING`, name, org)
+	// 同省同名意向去重（原 intent_customers 无唯一约束，此处更稳）。
+	_, err = r.pool.Exec(ctx, `
+		INSERT INTO customers (user_name, source, lifecycle_stage, org_id, extra)
+		SELECT $1, '意向客户', 'intent', $2::uuid, jsonb_build_object('_phase1_intent', true)
+		WHERE NOT EXISTS (
+			SELECT 1 FROM customers WHERE user_name = $1 AND lifecycle_stage = 'intent' AND org_id = $2::uuid)`,
+		name, org)
 	return err
 }
 
+// List 返回意向客户（统一 customers 表 stage='intent' + 最新一条 customer_diagnosis）。
 func (r *IntentCustomerRepository) List(ctx context.Context) ([]*IntentCustomer, error) {
-	q := `SELECT id, customer_name, meters, coverage_start, coverage_end,
-			coverage_days, completeness, avg_daily_load, status, extra, created_at
-		 FROM intent_customers`
+	q := `SELECT c.id::text, c.user_name, COALESCE(d.meters, '[]'::jsonb),
+			d.coverage_start, d.coverage_end, d.coverage_days, d.completeness, d.avg_daily_load,
+			c.extra, c.created_at
+		 FROM customers c
+		 LEFT JOIN LATERAL (
+			SELECT meters, coverage_start, coverage_end, coverage_days, completeness, avg_daily_load
+			FROM customer_diagnosis cd WHERE cd.customer_id = c.id
+			ORDER BY diagnosed_at DESC LIMIT 1
+		 ) d ON true
+		 WHERE c.lifecycle_stage = 'intent'`
 	args := []any{}
 	org, scoped := OrgFilter(ctx)
 	if scoped {
 		args = append(args, org)
-		q += fmt.Sprintf(" WHERE org_id = $%d::uuid", len(args))
+		q += fmt.Sprintf(" AND c.org_id = $%d::uuid", len(args))
 	}
-	q += " ORDER BY created_at DESC LIMIT 200"
+	q += " ORDER BY c.created_at DESC LIMIT 200"
 	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -78,9 +92,10 @@ func (r *IntentCustomerRepository) List(ctx context.Context) ([]*IntentCustomer,
 		var c IntentCustomer
 		if err := rows.Scan(&c.ID, &c.CustomerName, &c.Meters, &c.CoverageStart,
 			&c.CoverageEnd, &c.CoverageDays, &c.Completeness, &c.AvgDailyLoad,
-			&c.Status, &c.Extra, &c.CreatedAt); err != nil {
+			&c.Extra, &c.CreatedAt); err != nil {
 			return nil, err
 		}
+		c.Status = "pending" // stage='intent' 统一映射为 pending
 		list = append(list, &c)
 	}
 	return list, rows.Err()
@@ -127,7 +142,7 @@ func (r *IntentCustomerRepository) Diagnose(ctx context.Context) ([]*IntentCusto
 }
 
 func (r *IntentCustomerRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
@@ -140,17 +155,29 @@ func (r *IntentCustomerRepository) GenerateDemo(ctx context.Context) (int, error
 	names := []string{"佛山陶瓷工业园", "东莞机械厂", "广州物流园", "中山纺织集团", "珠海电子科技园"}
 	for _, n := range names {
 		now := time.Now()
-		days := 60 + rand.Intn(90)
+		days := 60 + rand.IntN(90)
 		start := now.AddDate(0, 0, -days)
 		completeness := 75 + rand.Float64()*25
 		avgLoad := 1500 + rand.Float64()*5000
+		// 意向客户即 customers(stage='intent')；同省同名去重；新建则带回诊断快照。
+		var cid string
+		err := r.pool.QueryRow(ctx, `
+			INSERT INTO customers (user_name, source, lifecycle_stage, org_id, extra)
+			SELECT $1, '意向客户', 'intent', $2::uuid, jsonb_build_object('_phase1_intent', true, '_demo', true)
+			WHERE NOT EXISTS (
+				SELECT 1 FROM customers WHERE user_name = $1 AND lifecycle_stage = 'intent' AND org_id = $2::uuid)
+			RETURNING id`, n, orgID).Scan(&cid)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue // 已存在，跳过
+		}
+		if err != nil {
+			return cnt, err
+		}
 		if _, err := r.pool.Exec(ctx,
-			`INSERT INTO intent_customers
-			   (customer_name, meters, coverage_start, coverage_end, coverage_days,
-			    completeness, avg_daily_load, status, org_id)
-			 VALUES ($1, '[]'::jsonb, $2, $3, $4, $5, $6, 'pending', $7::uuid)
-			 ON CONFLICT DO NOTHING`,
-			n, start, now, days, completeness, avgLoad, orgID); err != nil {
+			`INSERT INTO customer_diagnosis
+			   (customer_id, org_id, coverage_start, coverage_end, coverage_days, completeness, avg_daily_load)
+			 VALUES ($1, $2::uuid, $3, $4, $5, $6, $7)`,
+			cid, orgID, start, now, days, completeness, avgLoad); err != nil {
 			return cnt, err
 		}
 		cnt++

@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 )
 
@@ -63,7 +63,7 @@ func (r *TotalLoadRepository) List(ctx context.Context, days int) ([]*TotalLoadD
 }
 
 func (r *TotalLoadRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃省，否则用默认组织
+	// 确定 org_id：scoped 用活跃组织，否则用默认组织
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {

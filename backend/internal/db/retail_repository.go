@@ -125,6 +125,25 @@ func (r *RetailRepository) scanPackage(row pgx.Row) (*RetailPackage, error) {
 	return &p, nil
 }
 
+// GetPackagePricingConfig 取套餐的 pricing_config 原始 JSON（供 P0 结算引擎试算用）。
+// org scoped 时校验归属，避免跨省读他省套餐参数。
+func (r *RetailRepository) GetPackagePricingConfig(ctx context.Context, id uuid.UUID) ([]byte, error) {
+	q := "SELECT pricing_config FROM retail_packages WHERE id = $1"
+	args := []any{id}
+	if org, scoped := OrgFilter(ctx); scoped {
+		args = append(args, org)
+		q += fmt.Sprintf(" AND org_id = $%d::uuid", len(args))
+	}
+	var cfg []byte
+	if err := r.pool.QueryRow(ctx, q, args...).Scan(&cfg); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrPackageNotFound
+		}
+		return nil, err
+	}
+	return cfg, nil
+}
+
 func (r *RetailRepository) ListPackages(ctx context.Context, keyword, status string) ([]*RetailPackage, error) {
 	where := make([]string, 0, 3)
 	args := make([]any, 0, 3)
@@ -164,9 +183,9 @@ func (r *RetailRepository) ListPackages(ctx context.Context, keyword, status str
 }
 
 func (r *RetailRepository) CreatePackage(ctx context.Context, in PackageInput, createdBy *uuid.UUID) (*RetailPackage, error) {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return nil, ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return nil, err
 	}
 	status := in.Status
 	if status == "" {
@@ -293,14 +312,16 @@ func (r *RetailRepository) GetContract(ctx context.Context, id uuid.UUID) (*Reta
 
 // CreateContract 通过 INSERT ... SELECT 自动快照套餐名；套餐不存在则返回 ErrPackageNotFound。
 func (r *RetailRepository) CreateContract(ctx context.Context, in ContractInput, createdBy *uuid.UUID) (*RetailContract, error) {
-	org, scoped := OrgFilter(ctx)
-	if !scoped {
-		return nil, ErrOrgRequired
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return nil, err
 	}
 	status := in.Status
 	if status == "" {
 		status = "active"
 	}
+	// Phase 2：签有效合同即阶段流转 —— 新建 active(已签生效) 合同时，
+	// 把仍处 lead/intent 的客户推进到 service（adv 为数据修改 CTE，未被引用也必执行）。
 	const q = `
 		WITH ins AS (
 			INSERT INTO retail_contracts
@@ -309,6 +330,12 @@ func (r *RetailRepository) CreateContract(ctx context.Context, in ContractInput,
 			SELECT $1, $2, rp.package_name, $3, $4, $5, $6, $7, $8, $9::uuid
 			FROM retail_packages rp WHERE rp.id = $2
 			RETURNING *
+		),
+		adv AS (
+			UPDATE customers SET lifecycle_stage = 'service', updated_at = now()
+			WHERE id = (SELECT customer_id FROM ins)
+			  AND $7 = 'active'
+			  AND lifecycle_stage IN ('lead', 'intent')
 		)
 		SELECT ins.id, ins.customer_id, cust.user_name, ins.package_id, ins.package_name_snapshot,
 			ins.purchasing_energy_mwh, ins.green_power_ratio, ins.purchase_start_month,
@@ -326,6 +353,7 @@ func (r *RetailRepository) CreateContract(ctx context.Context, in ContractInput,
 
 func (r *RetailRepository) UpdateContract(ctx context.Context, id uuid.UUID, in ContractInput) (*RetailContract, error) {
 	org, scoped := OrgFilter(ctx)
+	// Phase 2：把合同改为 active(签约生效) 时，同样把 lead/intent 客户推进到 service。
 	q := `
 		WITH upd AS (
 			UPDATE retail_contracts SET
@@ -335,6 +363,12 @@ func (r *RetailRepository) UpdateContract(ctx context.Context, id uuid.UUID, in 
 				purchase_start_month=$6, purchase_end_month=$7, status=$8
 			WHERE id=$1
 			RETURNING *
+		),
+		adv AS (
+			UPDATE customers SET lifecycle_stage = 'service', updated_at = now()
+			WHERE id = (SELECT customer_id FROM upd)
+			  AND $8 = 'active'
+			  AND lifecycle_stage IN ('lead', 'intent')
 		)
 		SELECT upd.id, upd.customer_id, cust.user_name, upd.package_id, upd.package_name_snapshot,
 			upd.purchasing_energy_mwh, upd.green_power_ratio, upd.purchase_start_month,

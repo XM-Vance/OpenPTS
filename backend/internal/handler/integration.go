@@ -158,10 +158,10 @@ func (h *IntegrationHandler) ApplyToContract(c *gin.Context) {
 	_ = h.docRepo.InsertApply(c.Request.Context(), docID, "contract", 1, detail, claimsUserID(c))
 
 	c.JSON(http.StatusCreated, gin.H{
-		"contract":  contract,
-		"document":  doc,
+		"contract":      contract,
+		"document":      doc,
 		"mapped_fields": extMap,
-		"message":   "已从文档提取字段创建合同草稿",
+		"message":       "已从文档提取字段创建合同草稿",
 	})
 }
 
@@ -181,60 +181,55 @@ func (h *IntegrationHandler) ConvertIntentCustomer(c *gin.Context) {
 	}
 	_ = c.ShouldBindJSON(&req)
 
-	// 获取意向客户信息
-	var intentName, intentStatus string
-	err = h.pool.QueryRow(c.Request.Context(),
-		`SELECT customer_name, status FROM intent_customers WHERE id=$1`,
-		intentID).Scan(&intentName, &intentStatus)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "意向客户不存在"})
-		return
-	}
-	if intentStatus == "converted" {
-		c.JSON(http.StatusConflict, gin.H{"error": "该意向客户已转正"})
-		return
-	}
-
-	// 创建正式客户
-	name := req.CustomerName
-	if name == "" {
-		name = intentName
-	}
-
 	createdBy := claimsUserID(c)
 
-	cust, err := h.customerRepo.Create(c.Request.Context(), db.CustomerInput{
-		UserName: name,
-		Source:   "意向客户转正",
-		Tags:     []string{"意向转正"},
-	}, createdBy)
+	// Phase 1b：意向客户即统一 customers 表中 lifecycle_stage='intent' 的行。
+	// 转正 = 阶段流转 intent→service（同一行，诊断/历史数据保留，不再新建客户、不再复制）。
+	var curName string
+	selQ := `SELECT user_name FROM customers WHERE id=$1 AND lifecycle_stage='intent'`
+	selArgs := []any{intentID}
+	if org, scoped := db.OrgFilter(c.Request.Context()); scoped { // 防转正他省意向客户
+		selArgs = append(selArgs, org)
+		selQ += fmt.Sprintf(" AND org_id = $%d::uuid", len(selArgs))
+	}
+	err = h.pool.QueryRow(c.Request.Context(), selQ, selArgs...).Scan(&curName)
 	if err != nil {
-		if err == db.ErrOrgRequired {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "请先选择具体省份"})
-			return
-		}
-		log.Error().Err(err).Msg("创建客户失败")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建客户失败"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "意向客户不存在或已转正"})
+		return
+	}
+	name := req.CustomerName
+	if name == "" {
+		name = curName
+	}
+	updQ := `UPDATE customers SET lifecycle_stage='service', user_name=$2, source='意向客户转正',
+		   tags = array_append(coalesce(tags, '{}'), '意向转正'), updated_at=now()
+		 WHERE id=$1 AND lifecycle_stage='intent'`
+	updArgs := []any{intentID, name}
+	if org, scoped := db.OrgFilter(c.Request.Context()); scoped {
+		updArgs = append(updArgs, org)
+		updQ += fmt.Sprintf(" AND org_id = $%d::uuid", len(updArgs))
+	}
+	if _, err = h.pool.Exec(c.Request.Context(), updQ, updArgs...); err != nil {
+		log.Error().Err(err).Msg("意向客户转正失败")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "转正失败"})
 		return
 	}
 
-	// 更新意向客户状态
-	_, err = h.pool.Exec(c.Request.Context(),
-		`UPDATE intent_customers SET status='converted', converted_to=$2 WHERE id=$1`,
-		intentID, cust.ID)
+	cust, err := h.customerRepo.GetByID(c.Request.Context(), intentID)
 	if err != nil {
-		log.Warn().Err(err).Msg("更新意向客户状态失败")
+		log.Error().Err(err).Msg("读取转正后客户失败")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "转正失败"})
+		return
 	}
 
-	// 迁移关联文档
+	// 迁移关联文档（intent_customer_id → customer_id；id 沿用，二者相等）
 	_, _ = h.pool.Exec(c.Request.Context(),
-		`UPDATE documents SET customer_id=$2, intent_customer_id=$1 WHERE intent_customer_id=$1`,
-		intentID, cust.ID)
+		`UPDATE documents SET customer_id=$1 WHERE intent_customer_id=$1`, intentID)
 
 	result := gin.H{
-		"customer":    cust,
-		"intent_id":   intentID,
-		"message":     "意向客户转正成功",
+		"customer":  cust,
+		"intent_id": intentID,
+		"message":   "意向客户转正成功",
 	}
 
 	// 可选：创建合同
