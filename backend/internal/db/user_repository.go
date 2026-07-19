@@ -26,10 +26,9 @@ type User struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 	OrgID        *string    `json:"org_id,omitempty"` // 主/默认活跃组织（组织 ID）
 	IsHQ         bool       `json:"is_hq"`            // 总部标记
-	DingTalkUserID *string  `json:"dingtalk_userid,omitempty"` // 钉钉 unionId（免登绑定）
 }
 
-const userColumns = "id, username, password_hash, display_name, email, phone, is_active, last_login_at, created_at, updated_at, org_id::text, is_hq, dingtalk_userid"
+const userColumns = "id, username, password_hash, display_name, email, phone, is_active, last_login_at, created_at, updated_at, org_id::text, is_hq"
 
 type UserRepository struct {
 	pool *Pool
@@ -44,7 +43,7 @@ func (r *UserRepository) scan(row pgx.Row) (*User, error) {
 	err := row.Scan(
 		&u.ID, &u.Username, &u.PasswordHash, &u.DisplayName,
 		&u.Email, &u.Phone, &u.IsActive, &u.LastLoginAt,
-		&u.CreatedAt, &u.UpdatedAt, &u.OrgID, &u.IsHQ, &u.DingTalkUserID,
+		&u.CreatedAt, &u.UpdatedAt, &u.OrgID, &u.IsHQ,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -65,23 +64,10 @@ func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*User, erro
 	return r.scan(r.pool.QueryRow(ctx, q, id))
 }
 
-// GetByPhone 按手机号查活跃用户（钉钉免登自动匹配用）。
+// GetByPhone 按手机号查活跃用户。
 func (r *UserRepository) GetByPhone(ctx context.Context, phone string) (*User, error) {
 	q := `SELECT ` + userColumns + ` FROM users WHERE phone = $1 AND is_active = TRUE LIMIT 1`
 	return r.scan(r.pool.QueryRow(ctx, q, phone))
-}
-
-// GetByDingTalkUserID 按钉钉 unionId 查用户（精确绑定匹配）。
-func (r *UserRepository) GetByDingTalkUserID(ctx context.Context, dingUserID string) (*User, error) {
-	q := `SELECT ` + userColumns + ` FROM users WHERE dingtalk_userid = $1 LIMIT 1`
-	return r.scan(r.pool.QueryRow(ctx, q, dingUserID))
-}
-
-// SetDingTalkUserID 设置用户的钉钉绑定（幂等）。空串清除绑定。
-func (r *UserRepository) SetDingTalkUserID(ctx context.Context, id uuid.UUID, dingUserID string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE users SET dingtalk_userid = NULLIF($2, '') WHERE id = $1`, id, dingUserID)
-	return err
 }
 
 // IsOrgMember 校验用户是否可访问某省（user_orgs 成员）。orgID 为组织 UUID 字符串。

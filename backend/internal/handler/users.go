@@ -182,10 +182,20 @@ type SetUserRolesRequest struct {
 }
 
 // SetRoles PUT /api/v1/users/:id/roles
+//
+// 提权守卫：分配角色（尤其含 super_admin 系统角色）仅 super_admin 可操作；禁止自我赋权
+// （改自己的角色需另一名超管确认），避免普通用户管理员把自己提成超管。
 func (h *UsersHandler) SetRoles(c *gin.Context) {
+	claims, ok := requireSuperAdmin(c, h.repo)
+	if !ok {
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "id 格式错误"})
+		return
+	}
+	if forbidSelfAssign(c, claims, id) {
 		return
 	}
 	var req SetUserRolesRequest

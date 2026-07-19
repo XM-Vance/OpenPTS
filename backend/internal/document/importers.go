@@ -398,8 +398,8 @@ func (im *Importers) applyContracts(ctx context.Context, rows map[int]map[string
 	results := []applyRowResult{}
 	applied := 0
 	for g, row := range rows {
-		// 客户：乙方通常是客户；甲方常为售电公司，作兜底候选
-		name := firstNonEmpty(row["customer_name"], row["customer"], row["party_b"], row["company"], row["party_a"])
+		// 客户：甲方通常是用电客户（购电方），乙方是售电公司；party_a 优先，party_b 仅兜底。
+		name := firstNonEmpty(row["customer_name"], row["customer"], row["party_a"], row["company"], row["party_b"])
 		if name == "" {
 			results = append(results, applyRowResult{GroupNo: g, Error: "未识别到客户名称"})
 			continue

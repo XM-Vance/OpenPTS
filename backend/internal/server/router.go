@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/ptis/backend/internal/handler"
 	"github.com/ptis/backend/internal/middleware"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 func NewRouter(d *Deps) *gin.Engine {
@@ -23,6 +24,8 @@ func NewRouter(d *Deps) *gin.Engine {
 	// 方法不匹配返回 405（而非默认 404），便于契约闸区分"路由不存在"与"方法不对"。
 	r.HandleMethodNotAllowed = true
 	// R7: 中间件链优化 — 轻量在前、重量在后，未命中路由时少执行
+	// OTel 分布式追踪：最外层，包住 request_id/metrics/鉴权全链（连不上 Tempo 静默降级）。
+	r.Use(otelgin.Middleware("openpts-backend"))
 	r.Use(middleware.Recovery())                  // 最轻：仅捕获 panic
 	r.Use(middleware.RequestID())                 // 轻量：注入 trace-id
 	r.Use(middleware.CORS(!d.Config.IsProd()))    // 轻量：CORS 头 + OPTIONS 预检放行

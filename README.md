@@ -3,7 +3,18 @@
 > **OpenPTS** = **Open** **P**ower **T**rading **S**ystem —— 一个可二次开发的电力交易平台开源骨架。
 
 [![CI](https://github.com/XM-Vance/OpenPTS/actions/workflows/ci.yml/badge.svg)](https://github.com/XM-Vance/OpenPTS/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-v0.2.0-blue)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+## 🆕 v0.2.0 发布亮点
+
+- **🔐 用户 API Key** — 个人 API Key 生成/吊销，外部脚本凭 Key 换 JWT 访问 API
+- **🔍 OpenTelemetry 追踪** — 分布式追踪 + Tempo 后端，生产级可观测性
+- **🌧️ 气象采集闭环** — Open-Meteo → md_weather → weather_actuals 完整 ETL
+- **🔒 安全加固** — 提权防护、500 不泄露、DELETE 权限码统一
+- **🧹 清理** — 移除保函模块、死代码清理、依赖升级
+
+完整变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 一个可二次开发的**开放式电力交易系统脚手架**。基于成熟的生产架构（Go 网关 + Next.js + PostgreSQL），
 覆盖电力零售交易运营的核心业务域（客户、合同、结算、价格、负荷、文档解析等），
@@ -166,6 +177,9 @@ npm run dev         # 开发模式 http://localhost:3000
 - [x] 通用运营框架（鉴权/RBAC/多租户/审计）
 - [x] 核心业务域（客户/合同/结算/价格/负荷/文档解析）
 - [x] 一键 Demo（合成数据 + 合成预测）
+- [x] **用户 API Key 体系**（v0.2.0）— 外部脚本凭 Key 访问 API
+- [x] **OpenTelemetry 分布式追踪**（v0.2.0）— Tempo 后端
+- [x] **气象数据采集闭环**（v0.2.0）— Open-Meteo ETL
 - [ ] **示例算法接入**：提供一个最简的预测算法 demo（移动平均/相似日），演示如何填入接入点
 - [ ] **多省规则模板**：提供 1-2 个省份的规则数据样例，演示如何适配本地市场
 - [ ] **API 文档站**：基于 OpenAPI 生成可交互的 API 文档（Swagger UI / Scalar）

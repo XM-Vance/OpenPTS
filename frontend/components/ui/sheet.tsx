@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 
 /**
  * 轻量侧滑抽屉：不依赖 @radix-ui/react-dialog / vaul，与现有 dialog.tsx 风格一致。
- * 用于移动端导航抽屉（钉钉 H5）。遮罩点击 + ESC 关闭 + 滑入动画（tailwindcss-animate）。
+ * 用于移动端导航抽屉。遮罩点击 + ESC 关闭 + 滑入动画（tailwindcss-animate）。
  *
  * 桌面端不会渲染本组件（调用方按 useIsMobile() 决定），故无需做桌面适配。
  */

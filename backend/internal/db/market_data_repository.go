@@ -193,16 +193,26 @@ func (r *MarketDataRepository) ListTables(ctx context.Context) ([]*MarketDataTab
 	return list, nil
 }
 
-// QueryTable 查询指定表的数据（白名单校验）
-func (r *MarketDataRepository) QueryTable(ctx context.Context, tableName string, days int, locationCode string) ([]map[string]interface{}, error) {
+// QueryTable 查询指定表的数据（白名单校验）。支持分页：page 从 1 起，pageSize 默认 500。
+// 返回 (当前页数据, 符合过滤条件的总数, 错误)。pageSize 上限 2000 防滥用。
+func (r *MarketDataRepository) QueryTable(ctx context.Context, tableName string, days int, locationCode string, page, pageSize int) ([]map[string]interface{}, int, error) {
 	meta, ok := marketDataTables[tableName]
 	if !ok {
-		return nil, fmt.Errorf("未知的表: %s", tableName)
+		return nil, 0, fmt.Errorf("未知的表: %s", tableName)
 	}
 
 	if days <= 0 || days > 3650 {
 		days = 30
 	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize <= 0 || pageSize > 5000 {
+		// 默认 5000：与原 LIMIT 5000 行为一致，前端不传分页时无破坏。
+		// 上限 5000 防滥用。前端需要分页时传 page/page_size。
+		pageSize = 5000
+	}
+	offset := (page - 1) * pageSize
 
 	// 构建查询
 	args := []interface{}{}
@@ -224,19 +234,29 @@ func (r *MarketDataRepository) QueryTable(ctx context.Context, tableName string,
 		where = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	sql := fmt.Sprintf("SELECT * FROM %s %s ORDER BY %s DESC LIMIT 5000", tableName, where, meta.DateCol)
+	// 总数（用于前端判断是否还有更多页）
+	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM %s %s", tableName, where)
+	var total int
+	if err := r.pool.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	// 分页查询（SELECT * 因表列动态，白名单已保证安全）
+	args = append(args, pageSize, offset)
+	sql := fmt.Sprintf("SELECT * FROM %s %s ORDER BY %s DESC LIMIT $%d OFFSET $%d",
+		tableName, where, meta.DateCol, len(args)-1, len(args))
 	rows, err := r.pool.Query(ctx, sql, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
-	result := make([]map[string]interface{}, 0)
+	result := make([]map[string]interface{}, 0, pageSize)
 	fieldDescriptions := rows.FieldDescriptions()
 	for rows.Next() {
 		values, err := rows.Values()
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		row := make(map[string]interface{})
 		for i, fd := range fieldDescriptions {
@@ -244,7 +264,7 @@ func (r *MarketDataRepository) QueryTable(ctx context.Context, tableName string,
 		}
 		result = append(result, row)
 	}
-	return result, rows.Err()
+	return result, total, rows.Err()
 }
 
 // Overview 按分类汇总统计

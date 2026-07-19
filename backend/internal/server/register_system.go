@@ -11,7 +11,7 @@ import (
 
 func registerSystem(g *gin.RouterGroup, d *Deps) {
 	usersH := handler.NewUsersHandler(d.UserRepo, d.PermSvc)
-	rolesH := handler.NewRolesHandler(d.RoleRepo, d.PermRepo)
+	rolesH := handler.NewRolesHandler(d.RoleRepo, d.PermRepo, d.UserRepo)
 	orgH := handler.NewOrgHandler(db.NewOrgRepository(d.Pool), d.UserRepo)
 	modulesH := handler.NewModulesHandler(d.ModRepo)
 	menuH := handler.NewMenuHandler(d.Pool)

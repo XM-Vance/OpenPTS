@@ -70,7 +70,6 @@ const LABEL_TO_KEY: Record<string, string> = {
   '客户利润': 'nav.profit',
   '气象数据': 'nav.weather',
   '代理商管理': 'nav.agents',
-  '保函管理': 'nav.bonds',
   '光伏预测': 'nav.solarForecast',
   '光伏监控': 'nav.solarMonitor',
   '光伏结算': 'nav.solarSettlement',

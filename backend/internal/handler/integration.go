@@ -141,7 +141,7 @@ func (h *IntegrationHandler) ApplyToContract(c *gin.Context) {
 	contract, err := h.retailRepo.CreateContract(c.Request.Context(), in, createdBy)
 	if err != nil {
 		log.Error().Err(err).Msg("创建合同失败")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建合同失败: " + err.Error()})
+		respondInternalErr(c, "创建合同失败")
 		return
 	}
 

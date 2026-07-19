@@ -13,7 +13,6 @@ func registerCustomer(g *gin.RouterGroup, d *Deps) {
 	customerEnergyH := handler.NewCustomerEnergyHandler(d.CustomerEnergyRepo)
 	intentH := handler.NewIntentCustomerHandler(d.IntentRepo)
 	agentH := handler.NewAgentHandler(d.AgentRepo)
-	bondH := handler.NewBondHandler(d.BondRepo)
 
 	reqCMRead := middleware.RequirePermission(d.PermSvc, "customer_management:read")
 	reqCMWrite := middleware.RequirePermission(d.PermSvc, "customer_management:write")
@@ -45,10 +44,5 @@ func registerCustomer(g *gin.RouterGroup, d *Deps) {
 	g.DELETE("/agents/:id", reqCMDelete, agentH.Delete)
 	g.GET("/agents/:id/customers", reqCMRead, agentH.ListCustomers)
 
-	// H2 保函管理（沿用客户管理权限）
-	g.GET("/bonds", reqCMRead, bondH.List)
-	g.GET("/bonds/:id", reqCMRead, bondH.Get)
-	g.POST("/bonds", reqCMWrite, bondH.Create)
-	g.PUT("/bonds/:id", reqCMWrite, bondH.Update)
-	g.DELETE("/bonds/:id", reqCMDelete, bondH.Delete)
+	// 注：保函管理（/bonds）模块已于迁移 0118 下线，路由移除。
 }

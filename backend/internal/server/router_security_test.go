@@ -88,7 +88,6 @@ func minimalDeps() *Deps {
 		CustAnalysisRepo:     db.NewCustomerAnalysisRepository(pool),
 		TradeStrategyRepo:    db.NewTradeStrategyRepository(pool),
 		AgentRepo:            db.NewAgentRepository(pool),
-		BondRepo:             db.NewBondRepository(pool),
 		SolarRepo:            db.NewSolarRepository(pool),
 		DASimRepo:            db.NewDASimulationRepository(pool),
 		MarketDataRepo:       db.NewMarketDataRepository(pool),

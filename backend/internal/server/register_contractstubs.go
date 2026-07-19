@@ -15,6 +15,7 @@ func registerContractStubs(g *gin.RouterGroup, d *Deps) {
 
 	reqPMRead := middleware.RequirePermission(d.PermSvc, "price_management:read")
 	reqPMWrite := middleware.RequirePermission(d.PermSvc, "price_management:write")
+	reqPMDelete := middleware.RequirePermission(d.PermSvc, "price_management:delete")
 	reqSMRead := middleware.RequirePermission(d.PermSvc, "settlement_management:read")
 	reqSMWrite := middleware.RequirePermission(d.PermSvc, "settlement_management:write")
 	reqANRead := middleware.RequirePermission(d.PermSvc, "analytics:read")
@@ -26,7 +27,7 @@ func registerContractStubs(g *gin.RouterGroup, d *Deps) {
 	g.POST("/bid/trade-sources/manual", reqPMWrite, bidStubH.CreateTradeSource)
 	g.PUT("/bid/trade-sources/:id", reqPMWrite, bidStubH.UpdateTradeSource)
 	g.POST("/bid/trade-sources/:id/status", reqPMWrite, bidStubH.SetTradeSourceStatus)
-	g.DELETE("/bid/trade-sources/:id", reqPMWrite, bidStubH.DeleteTradeSource)
+	g.DELETE("/bid/trade-sources/:id", reqPMDelete, bidStubH.DeleteTradeSource)
 	g.GET("/bid/simulations/next-day", reqPMRead, bidStubH.NextDaySimulation)
 	g.POST("/bid/simulations/manual-save", reqPMWrite, bidStubH.ManualSimulation)
 	g.POST("/bid/simulations/manual-reset", reqPMWrite, bidStubH.ManualSimulation)

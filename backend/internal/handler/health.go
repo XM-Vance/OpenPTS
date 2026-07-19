@@ -13,13 +13,15 @@ import (
 func Health(pool *db.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		dbStatus := "ok"
+		overall := "ok"
 		status := http.StatusOK
 		if err := pool.HealthCheck(c.Request.Context()); err != nil {
 			dbStatus = "down: " + err.Error()
+			overall = "degraded"
 			status = http.StatusServiceUnavailable
 		}
 		c.JSON(status, gin.H{
-			"status":   "ok",
+			"status":   overall,
 			"service":  "ptis-backend",
 			"time":     time.Now().Format(time.RFC3339),
 			"database": dbStatus,

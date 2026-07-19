@@ -41,7 +41,6 @@ import {
   ArrowDownUp,
   Gavel,
   Handshake,
-  FileKey,
   Sun,
   FlaskConical,
   Leaf,
@@ -87,7 +86,6 @@ export const MENU: MenuGroup[] = [
       { label: '客户利润', href: '/analytics/profit', icon: PieChart, permission: 'analytics:read' },
       { label: '客户电量', href: '/customer-energy', icon: Zap, permission: 'customer_management:read' },
       { label: '代理商管理', href: '/agents', icon: Handshake, permission: 'customer_management:read' },
-      { label: '保函管理', href: '/bonds', icon: FileKey, permission: 'customer_management:read' },
     ],
   },
   {

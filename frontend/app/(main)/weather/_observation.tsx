@@ -18,6 +18,7 @@ import {
   YAxis,
 } from 'recharts';
 import { Button } from '@/components/ui/button';
+import { DemoBadge } from '@/components/feedback';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -43,6 +44,17 @@ const num = (v: number | null | undefined, d = 1) =>
   v == null ? '-' : v.toLocaleString('zh-CN', { maximumFractionDigits: d });
 const fmtHour = (iso: string) => iso.slice(5, 16).replace('T', ' '); // MM-DD HH:mm
 const fmtDay = (iso: string) => iso.slice(0, 10);
+
+// 风电出力率估算（简化功率曲线）：v ≤ cut-in 无出力，v ≥ rated 满发，中间段立方插值。
+// cut-in=3 m/s、rated=12 m/s 为典型陆上风机参数；纯展示用，标注 DemoBadge「估算」。
+const WIND_CUT_IN = 3;
+const WIND_RATED = 12;
+function windPowerRate(v: number | null | undefined): number {
+  if (v == null) return 0;
+  if (v <= WIND_CUT_IN) return 0;
+  if (v >= WIND_RATED) return 100;
+  return Math.round(Math.pow((v - WIND_CUT_IN) / (WIND_RATED - WIND_CUT_IN), 3) * 1000) / 10;
+}
 
 function StationSelect({
   stations,
@@ -82,6 +94,7 @@ function WindFarmSection() {
         t: fmtHour(w.obs_time),
         ws: w.wind_speed_100m,
         temp: w.temperature_2m,
+        power: windPowerRate(w.wind_speed_100m),
       })),
     [items],
   );
@@ -92,7 +105,8 @@ function WindFarmSection() {
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-base">
             <Wind className="h-4 w-4 text-sky-600" />
-            风电场风速（100m 逐时）
+            风电场风速与出力估算（100m 逐时）
+            <DemoBadge className="ml-1" tooltip="出力率基于简化功率曲线估算（cut-in 3 / rated 12 m/s），非真实 SCADA 数据" />
           </CardTitle>
           <div className="flex items-center gap-2">
             <StationSelect
@@ -118,8 +132,8 @@ function WindFarmSection() {
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey="t" tick={{ fontSize: 11 }} minTickGap={40} />
             <YAxis yAxisId="ws" tick={{ fontSize: 11 }} width={48} unit=" m/s" />
-            <YAxis yAxisId="temp" orientation="right" tick={{ fontSize: 11 }} width={44} unit="℃" />
-            <Tooltip contentStyle={{ fontSize: 12 }} />
+            <YAxis yAxisId="power" orientation="right" tick={{ fontSize: 11 }} width={44} unit="%" />
+            <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number, n: string) => n.includes('风速') ? `${v.toFixed(1)} m/s` : `${v.toFixed(1)}%`} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Line
               yAxisId="ws"
@@ -133,14 +147,13 @@ function WindFarmSection() {
               isAnimationActive={false}
             />
             <Line
-              yAxisId="temp"
+              yAxisId="power"
               type="monotone"
-              dataKey="temp"
-              stroke="#f97316"
-              strokeWidth={1}
-              strokeDasharray="4 4"
+              dataKey="power"
+              stroke="#22c55e"
+              strokeWidth={2}
               dot={false}
-              name="气温(℃)"
+              name="估算出力率(%)"
               connectNulls
               isAnimationActive={false}
             />
@@ -153,6 +166,7 @@ function WindFarmSection() {
                 <TableHead>时间</TableHead>
                 <TableHead>站点</TableHead>
                 <TableHead className="text-right">100m 风速(m/s)</TableHead>
+                <TableHead className="text-right">估算出力率(%)</TableHead>
                 <TableHead className="text-right">风向(°)</TableHead>
                 <TableHead className="text-right">气温(℃)</TableHead>
                 <TableHead className="text-right">湿度(%)</TableHead>
@@ -161,7 +175,7 @@ function WindFarmSection() {
             <TableBody>
               {isLoading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     加载中...
                   </TableCell>
                 </TableRow>
@@ -171,6 +185,7 @@ function WindFarmSection() {
                   <TableCell className="font-medium">{fmtHour(w.obs_time)}</TableCell>
                   <TableCell>{w.location_name}</TableCell>
                   <TableCell className="text-right">{num(w.wind_speed_100m)}</TableCell>
+                  <TableCell className="text-right text-green-600">{windPowerRate(w.wind_speed_100m).toFixed(1)}</TableCell>
                   <TableCell className="text-right">{num(w.wind_dir_100m, 0)}</TableCell>
                   <TableCell className="text-right">{num(w.temperature_2m)}</TableCell>
                   <TableCell className="text-right">{num(w.humidity_2m, 0)}</TableCell>
@@ -178,7 +193,7 @@ function WindFarmSection() {
               ))}
               {items.length === 0 && !isLoading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     暂无风电场风速数据
                   </TableCell>
                 </TableRow>

@@ -93,6 +93,24 @@ services:
       - "${GRAFANA_PORT:-3001}:3000"
     depends_on:
       - prometheus
+      - tempo
+    networks: [ptis]
+
+  # Tempo：分布式追踪后端。接收 OTLP（HTTP :4318），本地存储。
+  # backend 的 OTel SDK 向此导出 trace；Grafana 经数据源查询展示瀑布。
+  # 仅监控栈启动时存在；不启动监控栈时 backend 的 OTLP 连不上静默失败，不影响业务。
+  tempo:
+    image: grafana/tempo:2.6.0
+    container_name: ptis-tempo
+    restart: unless-stopped
+    command:
+      - '-config.file=/etc/tempo/tempo.yml'
+    volumes:
+      - ./monitoring/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo-data:/var/tempo
+    expose:
+      - "4318"   # OTLP HTTP（backend 导出口）
+      - "3200"   # Tempo HTTP API（Grafana 查询用）
     networks: [ptis]
 
   node-exporter:
@@ -153,3 +171,4 @@ volumes:
   prom-data:
   grafana-data:
   alertmanager-data:
+  tempo-data:

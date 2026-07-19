@@ -51,3 +51,33 @@ export async function changePassword(oldPassword: string, newPassword: string): 
     new_password: newPassword,
   });
 }
+
+// ─── 用户 API Key（外部脚本/工具以本人身份连 OpenPTS）───
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  last_used_at?: string | null;
+  expires_at?: string | null;
+  revoked_at?: string | null;
+  created_at: string;
+}
+
+export interface CreatedApiKey extends ApiKey {
+  key: string; // 明文，仅创建时返回一次
+}
+
+export async function listApiKeys(): Promise<ApiKey[]> {
+  const { data } = await apiClient.get<{ items: ApiKey[] }>('/api/v1/auth/api-keys');
+  return data.items ?? [];
+}
+
+export async function createApiKey(name: string): Promise<CreatedApiKey> {
+  const { data } = await apiClient.post<CreatedApiKey>('/api/v1/auth/api-keys', { name });
+  return data;
+}
+
+export async function revokeApiKey(id: string): Promise<void> {
+  await apiClient.delete(`/api/v1/auth/api-keys/${id}`);
+}

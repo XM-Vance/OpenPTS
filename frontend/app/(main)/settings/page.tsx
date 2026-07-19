@@ -15,6 +15,7 @@ import { useI18n } from '@/lib/i18n/context';
 import { LOCALES } from '@/lib/i18n/messages';
 import { extractErrorMessage } from '@/lib/api/client';
 import { changePassword } from '@/lib/api/auth';
+import { ApiKeySection } from './_api-key';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -192,6 +193,9 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* API Key 管理（外部脚本/工具以本人身份连 OpenPTS）*/}
+      <ApiKeySection />
     </div>
   );
 }

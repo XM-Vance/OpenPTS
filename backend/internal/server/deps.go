@@ -81,7 +81,6 @@ type Deps struct {
 	CustAnalysisRepo     *db.CustomerAnalysisRepository
 	TradeStrategyRepo    *db.TradeStrategyRepository
 	AgentRepo            *db.AgentRepository
-	BondRepo             *db.BondRepository
 	SolarRepo            *db.SolarRepository
 	DASimRepo            *db.DASimulationRepository
 	MarketDataRepo       *db.MarketDataRepository

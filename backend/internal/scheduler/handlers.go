@@ -111,13 +111,39 @@ func FetchMarketData(ctx context.Context, pool *db.Pool) error {
 	return nil
 }
 
+// FetchWeatherData 调用外部 Open-Meteo 采集脚本，刷新气象原始观测数据
+// （md_weather_wind_hourly 风电场逐时 + md_weather_hydrology_daily 水库水文逐日）。
+// 时序上排在 fetch_weather_actuals(19:00) 之前，保证 ETL 上游数据已就绪。
+// 采集失败只记日志、不阻塞调度循环。与 FetchMarketData 同一 exec 范式。
+func FetchWeatherData(ctx context.Context, pool *db.Pool) error {
+	_ = pool // 脚本自行连库，保留入参以满足 JobFunc 签名。
+
+	const defaultScript = "scripts/data-collection/fetch_weather_data.py"
+	cmd := exec.CommandContext(ctx, "python3", defaultScript)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		log.Error().
+			Err(err).
+			Str("stdout", stdout.String()).
+			Str("stderr", stderr.String()).
+			Msg("气象数据采集失败")
+		return err
+	}
+	log.Info().
+		Str("stdout", stdout.String()).
+		Msg("气象数据采集完成（md_weather_* 表已刷新）")
+	return nil
+}
+
 // FetchWeatherActuals 把 md_weather_hydrology_daily（Open-Meteo 脚本已采）聚合到 weather_actuals。
 // 接通"死表"weather_actuals（此前唯一写入是 demo，下游 ActualsSummary 永远空）。
 // 步骤：
 //  1. 兜底补建 weather_locations 站点（防 0114 迁移时 md 表为空；同名站点取均值经纬度）
 //  2. ETL 最近 7 天的 md_weather_hydrology_daily → weather_actuals（UPSERT）
 //
-// min_temp/max_temp 留 NULL（md 表只有 temp_mean；下游 ActualsSummary 用 COALESCE 兜 0）。
+// min_temp/max_temp 由 0125 迁移新增的 temp_max/temp_min 列透传（Open-Meteo daily 本就返回极值）。
 func FetchWeatherActuals(ctx context.Context, pool *db.Pool) error {
 	// 1. 兜底补建站点
 	if _, err := pool.Exec(ctx, `
@@ -133,14 +159,16 @@ func FetchWeatherActuals(ctx context.Context, pool *db.Pool) error {
 
 	// 2. ETL 最近 7 天 md_weather → weather_actuals
 	tag, err := pool.Exec(ctx, `
-		INSERT INTO weather_actuals (location_name, date, avg_temp, humidity, wind_speed, precipitation)
-		SELECT h.location_name, h.obs_date, h.temp_mean, h.humidity_mean,
-		       h.wind_speed_10m_mean, h.precipitation_sum
+		INSERT INTO weather_actuals (location_name, date, avg_temp, max_temp, min_temp, humidity, wind_speed, precipitation)
+		SELECT h.location_name, h.obs_date, h.temp_mean, h.temp_max, h.temp_min,
+		       h.humidity_mean, h.wind_speed_10m_mean, h.precipitation_sum
 		FROM md_weather_hydrology_daily h
 		JOIN weather_locations w ON w.name = h.location_name
 		WHERE h.obs_date >= now() - interval '7 days'
 		ON CONFLICT (location_name, date) DO UPDATE SET
 		    avg_temp       = EXCLUDED.avg_temp,
+		    max_temp       = EXCLUDED.max_temp,
+		    min_temp       = EXCLUDED.min_temp,
 		    humidity       = EXCLUDED.humidity,
 		    wind_speed     = EXCLUDED.wind_speed,
 		    precipitation  = EXCLUDED.precipitation`)

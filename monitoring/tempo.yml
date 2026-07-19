@@ -1,0 +1,34 @@
+# Tempo 配置：最小可用，接收 OTLP（HTTP :4318），本地 WAL 存储。
+# 仅监控栈（docker-compose.monitoring.yml）启动时存在。
+# backend / algo-service 的 OTel SDK 向 http://tempo:4318 导出 trace。
+
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: "0.0.0.0:4318"
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/blocks
+    wal:
+      path: /var/tempo/wal
+
+# 保留 48h（追踪数据量大，按需调）
+defaults:
+  retention_period: 48h
+
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write

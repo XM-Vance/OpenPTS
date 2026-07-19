@@ -23,6 +23,7 @@ func registerSettlement(g *gin.RouterGroup, d *Deps) {
 
 	reqSMRead := middleware.RequirePermission(d.PermSvc, "settlement_management:read")
 	reqSMWrite := middleware.RequirePermission(d.PermSvc, "settlement_management:write")
+	reqSMDelete := middleware.RequirePermission(d.PermSvc, "settlement_management:delete")
 
 	// 日结算
 	g.GET("/settlement/daily", reqSMRead, settlementH.List)
@@ -57,5 +58,5 @@ func registerSettlement(g *gin.RouterGroup, d *Deps) {
 	g.GET("/trade-rules/export", reqSMRead, tradeRuleH.Export)
 	g.POST("/trade-rules", reqSMWrite, tradeRuleH.Create)
 	g.PUT("/trade-rules/:id", reqSMWrite, tradeRuleH.Update)
-	g.DELETE("/trade-rules/:id", reqSMWrite, tradeRuleH.Delete)
+	g.DELETE("/trade-rules/:id", reqSMDelete, tradeRuleH.Delete)
 }

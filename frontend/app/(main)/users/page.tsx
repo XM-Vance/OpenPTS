@@ -41,7 +41,6 @@ const TOP_FEATURES = [
   { name: '报表导出', count: 876 },
   { name: '审批中心', count: 654 },
   { name: '价格查询', count: 532 },
-  { name: '保函管理', count: 421 },
   { name: '系统设置', count: 312 },
 ];
 

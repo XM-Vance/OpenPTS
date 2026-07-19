@@ -18,6 +18,7 @@ import (
 	"github.com/ptis/backend/internal/middleware"
 	"github.com/ptis/backend/internal/scheduler"
 	"github.com/ptis/backend/internal/server"
+	"github.com/ptis/backend/internal/observability"
 	"github.com/ptis/backend/internal/storage"
 	"github.com/rs/zerolog/log"
 )
@@ -36,6 +37,12 @@ func main() {
 		Str("env", cfg.Environment).
 		Str("port", cfg.Port).
 		Msg("OpenPTS 后端启动中")
+
+	// OpenTelemetry 分布式追踪初始化（连不上 Tempo 静默降级，业务零影响）。
+	otelShutdown, err := observability.InitTracer(ctx, cfg.Environment)
+	if err != nil {
+		log.Warn().Err(err).Msg("OTel 初始化失败，trace 禁用")
+	}
 
 	pool, err := db.New(ctx, cfg.DatabaseURL)
 	if err != nil {
@@ -180,6 +187,8 @@ func main() {
 	sched.Register("refresh_dashboard_kpi", scheduler.RefreshDashboardKPI)
 	sched.Register("expire_contracts", scheduler.ExpireContracts)
 	sched.Register("fetch_market_data", scheduler.FetchMarketData)
+	sched.Register("fetch_weather_data", scheduler.FetchWeatherData)
+	sched.Register("fetch_weather_actuals", scheduler.FetchWeatherActuals)
 	if err := sched.Start(ctx); err != nil {
 		log.Fatal().Err(err).Msg("启动调度器失败")
 	}
@@ -259,7 +268,6 @@ func main() {
 		CustomFieldRepo:      customFieldRepo,
 		TagRepo:              tagRepo,
 		AgentRepo:            db.NewAgentRepository(pool),
-		BondRepo:             db.NewBondRepository(pool),
 	}
 
 	r := server.NewRouter(deps)
@@ -295,5 +303,11 @@ func main() {
 	}
 	// 先 Shutdown(在途请求已全部投递审计)再 flush 写入器,排空缓冲后退出。
 	auditWriter.Stop(shutdownCtx)
+	// flush OTel 批量导出缓冲，确保退出前 trace 已投递到 Tempo。
+	if otelShutdown != nil {
+		if err := otelShutdown(shutdownCtx); err != nil {
+			log.Warn().Err(err).Msg("OTel shutdown 失败")
+		}
+	}
 	log.Info().Msg("已退出")
 }

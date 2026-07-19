@@ -11,10 +11,11 @@ import (
 type RolesHandler struct {
 	roleRepo *db.RoleRepository
 	permRepo *db.PermissionRepository
+	users    *db.UserRepository // 用于提权守卫校验调用方角色（SetPermissions）
 }
 
-func NewRolesHandler(roleRepo *db.RoleRepository, permRepo *db.PermissionRepository) *RolesHandler {
-	return &RolesHandler{roleRepo: roleRepo, permRepo: permRepo}
+func NewRolesHandler(roleRepo *db.RoleRepository, permRepo *db.PermissionRepository, users *db.UserRepository) *RolesHandler {
+	return &RolesHandler{roleRepo: roleRepo, permRepo: permRepo, users: users}
 }
 
 // RoleView 角色视图（含权限点清单）。
@@ -111,7 +112,13 @@ type SetRolePermissionsRequest struct {
 }
 
 // SetPermissions PUT /api/v1/roles/:code/permissions
+//
+// 提权守卫：仅 super_admin 可分配权限码（避免 user_management:write 的普通管理员给低权角色
+// 注入 system:write 等高权码，再分给自己形成提权闭环）。
 func (h *RolesHandler) SetPermissions(c *gin.Context) {
+	if _, ok := requireSuperAdmin(c, h.users); !ok {
+		return
+	}
 	code := c.Param("code")
 	var req SetRolePermissionsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

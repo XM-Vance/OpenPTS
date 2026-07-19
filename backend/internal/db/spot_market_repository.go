@@ -126,7 +126,7 @@ func (r *SpotMarketRepository) PriceCurve(ctx context.Context, days int) ([]*Spo
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*SpotMarketDaily
+	out := make([]*SpotMarketDaily, 0)
 	for rows.Next() {
 		var s SpotMarketDaily
 		if err := rows.Scan(&s.ID, &s.TradeDate, &s.DayAheadAvg, &s.DayAheadHigh, &s.DayAheadLow,
@@ -154,7 +154,7 @@ func (r *SpotMarketRepository) ListByRange(ctx context.Context, start, end time.
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*SpotMarketRow
+	out := make([]*SpotMarketRow, 0)
 	for rows.Next() {
 		var s SpotMarketRow
 		if err := rows.Scan(&s.Date, &s.DaAvgPrice, &s.RtAvgPrice,
@@ -200,13 +200,13 @@ func (r *SpotMarketRepository) List(ctx context.Context, days int) ([]*SpotMarke
 }
 
 func (r *SpotMarketRepository) GenerateDemo(ctx context.Context) (int, error) {
-	// 确定 org_id：scoped 用活跃组织，否则用默认组织
+	// 确定 org_id：scoped 用活跃省，否则用 FJ
 	org, scoped := OrgFilter(ctx)
 	orgID := org
 	if !scoped {
 		if err := r.pool.QueryRow(ctx,
 			"SELECT id FROM organizations WHERE code='default'").Scan(&orgID); err != nil {
-			return 0, fmt.Errorf("resolve default org: %w", err)
+			return 0, fmt.Errorf("resolve FJ org: %w", err)
 		}
 	}
 	cnt := 0

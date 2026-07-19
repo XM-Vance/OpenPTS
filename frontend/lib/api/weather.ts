@@ -25,6 +25,9 @@ export interface DailyWeatherSummary {
   weather_icon: string;
   min_temp: number;
   max_temp: number;
+  avg_temp: number;
+  humidity: number;
+  wind_speed: number;
   avg_precipitation: number;
   avg_cloud_cover: number;
 }
@@ -63,6 +66,17 @@ export const getWeatherActuals = async (locationId: string, date: string): Promi
 export const getWeatherActualsSummary = async (locationId: string, date: string): Promise<DailyWeatherSummary> => {
   const { data } = await apiClient.get('/api/v1/weather/actuals/summary', {
     params: { location_id: locationId, date },
+  });
+  return data;
+};
+
+// 某站近 N 天实况日摘要列表（一次取回多日完整字段，供走势图/KPI 聚合）。
+export const getWeatherActualsRange = async (
+  locationId: string,
+  days = 14,
+): Promise<{ items: DailyWeatherSummary[] }> => {
+  const { data } = await apiClient.get('/api/v1/weather/actuals/range', {
+    params: { location_id: locationId, days },
   });
   return data;
 };
