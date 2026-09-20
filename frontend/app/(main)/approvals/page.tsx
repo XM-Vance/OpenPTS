@@ -16,6 +16,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { MobileCardList } from '@/components/data-display/mobile-card-list';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { usePermission } from '@/lib/auth/use-permission';
 import { useAuth } from '@/lib/auth/context';
 import { extractErrorMessage } from '@/lib/api/client';
@@ -28,6 +30,8 @@ import {
   type ApprovalRequest,
 } from '@/lib/api/approval';
 import { Clock, CheckCircle2, XCircle, ArrowRight } from 'lucide-react';
+import { ChartLoading, EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: '草稿',
@@ -96,6 +100,27 @@ export default function ApprovalsPage() {
   const items = useMemo(() => data?.items ?? [], [data]);
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const isMobile = useIsMobile();
+  // 移动端审批卡片：标题/资源/状态徽章作标题行，提交人/时间次行，整卡点击打开详情。
+  const approvalMobileFields = useMemo(
+    () => [
+      {
+        primary: true,
+        render: (a: ApprovalRequest) => (
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{a.title}</span>
+            <Badge variant="outline">{a.resource}</Badge>
+            <Badge variant={statusVariant(a.status)}>{STATUS_LABEL[a.status] ?? a.status}</Badge>
+          </span>
+        ),
+      },
+      { label: '提交人', render: (a: ApprovalRequest) => a.submitted_by },
+      { label: '提交时间', render: (a: ApprovalRequest) => fmtTime(a.created_at) },
+      { label: '审批人', render: (a: ApprovalRequest) => a.reviewed_by ?? '-' },
+      { label: '审批时间', render: (a: ApprovalRequest) => fmtTime(a.reviewed_at) },
+    ],
+    [],
+  );
 
   // ── Approval efficiency stats ──
   const effStats = useMemo(() => {
@@ -173,7 +198,7 @@ export default function ApprovalsPage() {
         <Card>
           <CardContent className="pt-6">
             <p className="text-xs text-muted-foreground">待审批（本页）</p>
-            <p className="mt-1 text-2xl font-bold text-amber-600">
+            <p className="mt-1 text-2xl font-bold text-amber-700">
               {items.filter((i) => i.status === 'pending').length}
             </p>
           </CardContent>
@@ -181,7 +206,7 @@ export default function ApprovalsPage() {
         <Card>
           <CardContent className="pt-6">
             <p className="text-xs text-muted-foreground">已通过（本页）</p>
-            <p className="mt-1 text-2xl font-bold text-emerald-600">
+            <p className="mt-1 text-2xl font-bold text-emerald-700">
               {items.filter((i) => i.status === 'approved').length}
             </p>
           </CardContent>
@@ -201,7 +226,7 @@ export default function ApprovalsPage() {
               return (
                 <div key={step} className="flex items-center">
                   <div className={`flex flex-col items-center rounded-lg border px-6 py-3 min-w-[100px] ${isActive ? 'border-primary bg-primary/5' : 'bg-muted/30'}`}>
-                    <div className={`flex h-8 w-8 items-center justify-center rounded-full ${step === 'approved' ? 'bg-emerald-100 text-emerald-600' : step === 'pending' ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-500'}`}>
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-full ${step === 'approved' ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : step === 'pending' ? 'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400' : 'bg-gray-100 text-gray-500'}`}>
                       {step === 'approved' ? <CheckCircle2 className="h-4 w-4" /> : step === 'pending' ? <Clock className="h-4 w-4" /> : <div className="h-2 w-2 rounded-full bg-current" />}
                     </div>
                     <span className="mt-1 text-sm font-medium">{STATUS_LABEL[step]}</span>
@@ -235,7 +260,7 @@ export default function ApprovalsPage() {
               </div>
               <div className="flex items-center justify-between rounded-md border p-3">
                 <span className="text-sm text-muted-foreground">通过率</span>
-                <span className="text-lg font-bold text-emerald-600">
+                <span className="text-lg font-bold text-emerald-700">
                   {items.length > 0 ? Math.round(items.filter((i) => i.status === 'approved').length / items.length * 100) : 0}%
                 </span>
               </div>
@@ -249,7 +274,7 @@ export default function ApprovalsPage() {
           </CardHeader>
           <CardContent>
             {effStats.reviewers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">暂无审批人数据</p>
+              <EmptyState compact title="暂无审批人数据" />
             ) : (
               <div className="space-y-2">
                 {effStats.reviewers.map((r) => (
@@ -267,6 +292,20 @@ export default function ApprovalsPage() {
         </Card>
       </div>
 
+      {isMobile ? (
+        isLoading ? (
+          <ChartLoading className="py-8" />
+        ) : items.length === 0 ? (
+          <EmptyState compact className="py-8" title="暂无审批条目" />
+        ) : (
+          <MobileCardList
+            items={items}
+            itemKey={(a) => String(a.id)}
+            fields={approvalMobileFields}
+            onItemClick={(a) => setSelected(a)}
+          />
+        )
+      ) : (
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -284,9 +323,7 @@ export default function ApprovalsPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={8}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {items.map((a) => (
@@ -311,14 +348,13 @@ export default function ApprovalsPage() {
             ))}
             {items.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  暂无审批条目
-                </TableCell>
+                <TableCell colSpan={8}><EmptyState compact title="暂无审批条目" /></TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
+      )}
 
       {/* 分页:total 来自后端同条件 COUNT,翻页保留当前标签页 */}
       <div className="flex items-center justify-between text-sm text-muted-foreground">
@@ -443,7 +479,7 @@ function ApprovalDetailDialog({
               const isRejected = approval.status === 'rejected';
               return (
                 <div key={step} className="flex items-center">
-                  <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${isCurrent ? 'bg-primary text-primary-foreground' : isDone ? 'bg-emerald-100 text-emerald-700' : isRejected && step === 'pending' ? 'bg-red-100 text-red-700' : 'bg-muted text-muted-foreground'}`}>
+                  <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${isCurrent ? 'bg-primary text-primary-foreground' : isDone ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : isRejected && step === 'pending' ? 'bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400' : 'bg-muted text-muted-foreground'}`}>
                     {isDone && <CheckCircle2 className="h-3 w-3" />}
                     {isRejected && step === 'pending' && <XCircle className="h-3 w-3" />}
                     {STATUS_LABEL[step]}

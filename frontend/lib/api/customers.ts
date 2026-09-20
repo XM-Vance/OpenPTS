@@ -26,6 +26,7 @@ export interface CustomerInput {
   tags?: string[];
   is_demo?: boolean;
   extra?: Record<string, unknown>;
+  agent_id?: string; // Phase 2：所属代理商 UUID（空=不绑定）
 }
 
 export async function listCustomers(
@@ -46,11 +47,6 @@ export async function searchCustomersAllOrg(
     headers: { 'X-Org-Id': '' },
   });
   return data.items ?? [];
-}
-
-export async function getCustomer(id: string): Promise<Customer> {
-  const { data } = await apiClient.get(`/api/v1/customers/${id}`);
-  return data;
 }
 
 export async function createCustomer(input: CustomerInput): Promise<Customer> {

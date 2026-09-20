@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/table';
 import { StatCard } from '@/components/data-display/stat-card';
 import { ChartContainer } from '@/components/charts/chart-container';
-import { DemoBadge } from '@/components/feedback';
+import { EmptyState, DemoBadge } from '@/components/feedback';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
 import {
@@ -25,6 +25,7 @@ import {
   listStorageDeclarations,
 } from '@/lib/api/storage-declaration';
 import { Clock, TrendingUp, DollarSign, Battery } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const wan = (v: number) => (v / 10000).toLocaleString('zh-CN', { maximumFractionDigits: 2 });
 const fmt = (v: number, d = 2) => v.toLocaleString('zh-CN', { maximumFractionDigits: d });
@@ -237,9 +238,7 @@ export default function StorageDeclarationPage() {
       {/* 申报 vs 实际可用容量对比图 */}
       <ChartContainer title="申报 vs 实际可用容量对比 (MWh)" actions={<DemoBadge tooltip="实际可用容量含随机系数，非真实采集" />}>
         {capacityCompareData.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            暂无数据{canWrite && '，可点右上「生成演示数据」'}
-          </p>
+          <EmptyState compact title={<>暂无数据{canWrite && '，可点右上「生成演示数据」'}</>} />
         ) : (
           <CapacityComposed data={capacityCompareData} />
         )}
@@ -248,7 +247,7 @@ export default function StorageDeclarationPage() {
       {/* 收益预估趋势 */}
       <ChartContainer title="申报收益预估趋势（万元）">
         {revenueTrend.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无数据</p>
+          <EmptyState compact title="暂无数据" />
         ) : (
           <RevenueBar data={revenueTrend} />
         )}
@@ -287,9 +286,7 @@ export default function StorageDeclarationPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={4}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {items.map((i) => (
@@ -297,14 +294,14 @@ export default function StorageDeclarationPage() {
                 key={i.id}
                 className={
                   selected === i.id
-                    ? 'cursor-pointer bg-amber-50 ring-1 ring-amber-300'
+                    ? 'cursor-pointer bg-amber-50 dark:bg-amber-500/15 ring-1 ring-amber-300 dark:ring-amber-500/40'
                     : 'cursor-pointer hover:bg-muted/50'
                 }
                 onClick={() => setSelected(i.id)}
               >
                 <TableCell className="font-medium">{i.declared_date.slice(0, 10)}</TableCell>
                 <TableCell>{i.station_name}</TableCell>
-                <TableCell className="text-right text-emerald-600">
+                <TableCell className="text-right text-emerald-700">
                   {wan(i.expected_revenue)}
                 </TableCell>
                 <TableCell>
@@ -314,9 +311,7 @@ export default function StorageDeclarationPage() {
             ))}
             {items.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  暂无申报数据{canWrite && '，可点右上「生成演示数据」'}
-                </TableCell>
+                <TableCell colSpan={4}><EmptyState compact title={<> 暂无申报数据{canWrite && '，可点右上「生成演示数据」'} </>} /></TableCell>
               </TableRow>
             )}
           </TableBody>

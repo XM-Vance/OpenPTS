@@ -18,6 +18,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useQuery } from '@tanstack/react-query';
 import { getSettlementSummary } from '@/lib/api/dashboard';
+import { riseFallColor } from '@/components/charts/palette';
+import { ChartLoading, EmptyState } from '@/components/feedback';
 
 type ViewMode = 'monthly' | 'yearly';
 
@@ -47,17 +49,17 @@ export default function SettlementPanel() {
         {
           title: '年度累计毛利',
           value: fmt(kpi.yearly_gross_profit),
-          color: Number(kpi.yearly_gross_profit ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-500',
+          color: Number(kpi.yearly_gross_profit ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-500',
         },
         {
           title: '月度毛利',
           value: fmt(kpi.monthly_gross_profit),
-          color: Number(kpi.monthly_gross_profit ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-500',
+          color: Number(kpi.monthly_gross_profit ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-500',
         },
         {
           title: '购售电价差',
           value: fmt(kpi.price_spread, 3) + ' 元/MWh',
-          color: Number(kpi.price_spread ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-500',
+          color: Number(kpi.price_spread ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-500',
         },
         {
           title: '售电均价',
@@ -103,17 +105,15 @@ export default function SettlementPanel() {
 
         {/* Bar chart */}
         {isLoading ? (
-          <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-            加载中...
-          </div>
+          <ChartLoading className="h-48" />
         ) : chartData.length > 0 ? (
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#6b7280' }} />
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                 <YAxis
-                  tick={{ fontSize: 11, fill: '#6b7280' }}
+                  tick={{ fontSize: 11 }}
                   width={55}
                   tickFormatter={(v: number) => (v >= 10000 ? `${(v / 10000).toFixed(1)}万` : String(v))}
                 />
@@ -125,7 +125,7 @@ export default function SettlementPanel() {
                   {chartData.map((entry, idx) => (
                     <Cell
                       key={idx}
-                      fill={Number((entry as unknown as Record<string, unknown>)[profitKey] ?? 0) >= 0 ? '#10b981' : '#ef4444'}
+                      fill={riseFallColor(Number((entry as unknown as Record<string, unknown>)[profitKey] ?? 0))}
                     />
                   ))}
                 </Bar>
@@ -133,9 +133,7 @@ export default function SettlementPanel() {
             </ResponsiveContainer>
           </div>
         ) : (
-          <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-            暂无结算数据
-          </div>
+          <EmptyState compact className="h-32" title="暂无结算数据" />
         )}
       </CardContent>
     </Card>

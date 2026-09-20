@@ -24,3 +24,13 @@ func monthsAgoYM(n int) string {
 	first := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 	return first.AddDate(0, -n, 0).Format("2006-01")
 }
+
+// StartOfDay 返回 t 所在本地时区的当日零点。
+//
+// 不能用 time.Truncate(24h)：它按 UTC 纪元的整 24h 倍数截断，Asia/Shanghai(+08)
+// 下结果不是本地零点而是本地 08:00——凌晨 00:00~08:00 之间生成的"当日"数据
+// 会被记到昨天（operating_date/trade_date 整体偏移一天）。
+func StartOfDay(t time.Time) time.Time {
+	t = t.Local()
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}

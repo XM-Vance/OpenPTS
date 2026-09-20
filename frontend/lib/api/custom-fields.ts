@@ -27,7 +27,7 @@ export interface CustomFieldInput {
 
 export async function listCustomFields(entityType?: string): Promise<{ items: CustomField[] }> {
   try {
-    const res = await apiClient.get<{ items: CustomField[] }>('/custom-fields', {
+    const res = await apiClient.get<{ items: CustomField[] }>('/api/v1/custom-fields', {
       params: entityType ? { entity_type: entityType } : undefined,
     });
     return res.data;
@@ -38,7 +38,7 @@ export async function listCustomFields(entityType?: string): Promise<{ items: Cu
 
 export async function createCustomField(data: CustomFieldInput): Promise<CustomField> {
   try {
-    const res = await apiClient.post<CustomField>('/custom-fields', data);
+    const res = await apiClient.post<CustomField>('/api/v1/custom-fields', data);
     return res.data;
   } catch (e) {
     throw new Error(extractErrorMessage(e, 'Failed to create custom field'));
@@ -47,7 +47,7 @@ export async function createCustomField(data: CustomFieldInput): Promise<CustomF
 
 export async function updateCustomField(id: string, data: Partial<CustomFieldInput>): Promise<CustomField> {
   try {
-    const res = await apiClient.put<CustomField>(`/custom-fields/${id}`, data);
+    const res = await apiClient.put<CustomField>(`/api/v1/custom-fields/${id}`, data);
     return res.data;
   } catch (e) {
     throw new Error(extractErrorMessage(e, 'Failed to update custom field'));
@@ -56,7 +56,7 @@ export async function updateCustomField(id: string, data: Partial<CustomFieldInp
 
 export async function deleteCustomField(id: string): Promise<void> {
   try {
-    await apiClient.delete(`/custom-fields/${id}`);
+    await apiClient.delete(`/api/v1/custom-fields/${id}`);
   } catch (e) {
     throw new Error(extractErrorMessage(e, 'Failed to delete custom field'));
   }

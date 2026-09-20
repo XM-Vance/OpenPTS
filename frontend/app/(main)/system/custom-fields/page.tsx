@@ -27,6 +27,8 @@ import {
   type CustomFieldInput,
 } from '@/lib/api/custom-fields';
 import { Settings2, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/feedback';
 
 const ENTITY_TYPES = [
   { value: '', label: '全部实体' },
@@ -280,7 +282,7 @@ export default function CustomFieldsPage() {
             管理各实体的自定义扩展字段，支持文本、数字、日期、下拉等类型
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={entityFilter}
             onChange={(e) => setEntityFilter(e.target.value)}
@@ -313,9 +315,7 @@ export default function CustomFieldsPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {items.map((f) => (
@@ -350,9 +350,7 @@ export default function CustomFieldsPage() {
             ))}
             {items.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
-                  暂无自定义字段，点击「新增字段」添加
-                </TableCell>
+                <TableCell colSpan={7}><EmptyState compact title="暂无自定义字段，点击「新增字段」添加" /></TableCell>
               </TableRow>
             )}
           </TableBody>

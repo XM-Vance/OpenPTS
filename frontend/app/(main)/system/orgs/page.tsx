@@ -18,6 +18,8 @@ import {
 import { listOrgs, createOrg, updateOrg, setUserOrgs, listOrgMembers } from '@/lib/api/orgs';
 import { listUsers } from '@/lib/api/users';
 import { extractErrorMessage } from '@/lib/api/client';
+import { EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function OrgsPage() {
   const qc = useQueryClient();
@@ -137,7 +139,7 @@ export default function OrgsPage() {
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="如 浙江省" className="h-8 w-40" />
             </div>
             <Button size="sm" onClick={handleCreate}>新建省份</Button>
-            {err && <span className="text-sm text-red-600">{err}</span>}
+            {err && <span className="text-sm text-red-700">{err}</span>}
           </div>
           <div className="rounded-md border">
             <Table>
@@ -181,7 +183,7 @@ export default function OrgsPage() {
                       <TableRow key={o.id + '-members'}>
                         <TableCell colSpan={5} className="bg-muted/30">
                           {loadingMembers && !members[o.id] ? (
-                            <p className="text-sm text-muted-foreground py-2">加载中...</p>
+                            <Skeleton className="h-5 w-full" />
                           ) : members[o.id] && members[o.id].length > 0 ? (
                             <div className="flex flex-wrap gap-2 py-1">
                               {members[o.id].map((m: any) => (
@@ -193,9 +195,7 @@ export default function OrgsPage() {
                               ))}
                             </div>
                           ) : (
-                            <p className="text-sm text-muted-foreground py-2">
-                              暂无成员 — 请在下方「用户授权」中分配
-                            </p>
+                            <EmptyState compact className="text-sm text-muted-foreground py-2" title="暂无成员 — 请在下方「用户授权」中分配" />
                           )}
                         </TableCell>
                       </TableRow>
@@ -259,7 +259,7 @@ export default function OrgsPage() {
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Button size="sm" onClick={handleAssign}>保存授权</Button>
             {assignMsg && <span className="text-sm text-muted-foreground">{assignMsg}</span>}
           </div>

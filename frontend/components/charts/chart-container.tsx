@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Maximize2, Minimize2, Download } from 'lucide-react';
 
 export interface ChartContainerProps {
@@ -34,6 +35,9 @@ export function ChartContainer({
 }: ChartContainerProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  // 移动端缩小默认高度，避免单图占满整屏、减少长滚动。
+  const isMobile = useIsMobile();
+  const effectiveMinHeight = isMobile ? Math.min(minHeight, 240) : minHeight;
 
   // 全屏切换
   const toggleFullscreen = useCallback(() => {
@@ -68,7 +72,11 @@ export function ChartContainer({
 
     const img = new Image();
     img.onload = () => {
-      ctx.fillStyle = '#ffffff';
+      // 导出底色跟随主题 card token：HSL 三元组（"H S% L%"）转为 canvas 可用的逗号语法
+      const cardHsl = getComputedStyle(document.documentElement).getPropertyValue('--card').trim();
+      ctx.fillStyle = cardHsl.startsWith('#')
+        ? cardHsl
+        : `hsl(${cardHsl.split(/\s+/).join(', ')})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, svgRect.width, svgRect.height);
       const link = document.createElement('a');
@@ -107,7 +115,7 @@ export function ChartContainer({
   }
 
   return (
-    <Card className={cn('relative', className)}>
+    <Card className={cn('relative transition-shadow hover:shadow-md', className)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-base font-medium">{title}</CardTitle>
         <div className="flex items-center gap-1">
@@ -122,10 +130,14 @@ export function ChartContainer({
       </CardHeader>
       <CardContent
         ref={containerRef}
-        style={{ minHeight }}
+        style={{ minHeight: effectiveMinHeight }}
         className="[&_.recharts-surface:focus]:outline-none [&_*:focus]:outline-none"
       >
-        {children}
+        {/* 定高内容层：ResponsiveContainer 的 height="100%" 需要确定高度的父级，
+            只挂 minHeight 时百分比高度解析为 0，图表整体不可见（有数据时白屏卡） */}
+        <div className="w-full" style={{ height: effectiveMinHeight }}>
+          {children}
+        </div>
       </CardContent>
     </Card>
   );

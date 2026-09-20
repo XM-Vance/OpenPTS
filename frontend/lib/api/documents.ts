@@ -22,6 +22,7 @@ export interface DocumentItem {
   customer_id: string | null;
   contract_id: string | null;
   intent_customer_id: string | null;
+  applied_count: number; // 成功归档次数（applied_rows>0），0=待处理
   created_at: string;
   updated_at: string;
 }
@@ -43,7 +44,7 @@ export interface DocumentExtraction {
   value_date: string | null;
   unit: string | null;
   confidence: number | null;
-  source: string; // glm/regex/excel
+  source: string; // excel(表格直读)/agent(外部AI)/manual(人工)；glm/regex 为历史遗留值
 }
 
 export interface DocumentApply {
@@ -67,6 +68,7 @@ export interface DocumentGetResponse {
 export async function listDocuments(params: {
   status?: string;
   doc_type?: string;
+  processed?: 'pending' | 'processed';
   limit?: number;
   scope?: string;
 } = {}): Promise<DocumentItem[]> {

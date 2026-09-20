@@ -30,6 +30,8 @@ import {
   type User,
 } from '@/lib/api/users';
 import { listRoles, type Role } from '@/lib/api/roles';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/feedback';
 
 /* ── Mock data for analytics panels ── */
 const TOP_FEATURES = [
@@ -135,9 +137,7 @@ export default function UsersPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={6}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {items.map((u) => (
@@ -169,9 +169,7 @@ export default function UsersPage() {
             ))}
             {items.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  暂无数据
-                </TableCell>
+                <TableCell colSpan={6}><EmptyState compact title="暂无数据" /></TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -335,7 +333,7 @@ function UserFormDialog({
             </div>
           )}
           {isNew && selectedRoles.length === 0 && (
-            <p className="text-xs text-amber-600">
+            <p className="text-xs text-amber-700">
               未选择角色时，将默认赋予「只读用户(viewer)」（可登录并只读查看全部模块），可事后提权。
             </p>
           )}
@@ -383,7 +381,7 @@ function ResetPasswordDialog({ user, onClose }: { user: User; onClose: () => voi
         <DialogTitle>重置密码 · {user.username}</DialogTitle>
       </DialogHeader>
       {done ? (
-        <p className="text-sm text-emerald-600">密码已重置</p>
+        <p className="text-sm text-emerald-700">密码已重置</p>
       ) : (
         <div className="space-y-4">
           <div className="space-y-2">

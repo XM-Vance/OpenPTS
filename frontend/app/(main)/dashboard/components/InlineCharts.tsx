@@ -20,6 +20,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { BarChart3 } from 'lucide-react';
+import { CHART_SERIES } from '@/components/charts/palette';
+import { EmptyState } from '@/components/feedback';
 
 /* ── Sparkline ── */
 export function SparkCard({
@@ -67,7 +69,7 @@ export function SparkCard({
             </ResponsiveContainer>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">暂无数据</p>
+          <EmptyState compact className="text-xs text-muted-foreground" title="暂无数据" />
         )}
       </CardContent>
     </Card>
@@ -105,7 +107,7 @@ export function MarketOverviewChart({ data }: { data: { name: string; volume: nu
                   <Cell key={index} fill={entry.fill} />
                 ))}
               </Bar>
-              <Bar yAxisId="price" dataKey="avgPrice" name="均价" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              <Bar yAxisId="price" dataKey="avgPrice" name="均价" fill={CHART_SERIES[1]} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

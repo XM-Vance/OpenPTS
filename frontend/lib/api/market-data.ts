@@ -29,6 +29,11 @@ export interface MarketDataQueryResult {
   data: Record<string, unknown>[];
   scope: string;
   scope_label: string;
+  // 分页（后端 /market-data/:table 支持 ?page=&page_size=；不传时默认 page=1/page_size=5000）
+  page?: number;
+  page_size?: number;
+  total?: number;
+  has_more?: boolean;
 }
 
 // ── API ──

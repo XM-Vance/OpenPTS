@@ -110,10 +110,11 @@ export interface CustomerProfit {
   gross_profit: number;
   gross_margin: number;
   energy_mwh: number;
+  is_estimate: boolean; // true=签约前测算，false=签约后实际结算
   created_at: string;
 }
 export async function listCustomerProfit(
-  params: { month?: string; limit?: number } = {},
+  params: { month?: string; limit?: number; estimate?: boolean } = {},
 ): Promise<{ items: CustomerProfit[] }> {
   const { data } = await apiClient.get('/api/v1/analytics/customer-profit', { params });
   return data;

@@ -12,8 +12,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useQuery } from '@tanstack/react-query';
 import { getSettlementSummary } from '@/lib/api/dashboard';
+import { CHART_SERIES } from '@/components/charts/palette';
+import { ChartLoading, EmptyState } from '@/components/feedback';
 
-const COLORS = ['#6366f1', '#3b82f6', '#10b981', '#f97316', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
+const COLORS = [...CHART_SERIES];
 
 export default function CustomerOverviewPanel() {
   const { data, isLoading } = useQuery({
@@ -46,9 +48,7 @@ export default function CustomerOverviewPanel() {
 
         {/* By type pie */}
         {isLoading ? (
-          <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-            加载中...
-          </div>
+          <ChartLoading className="h-40" />
         ) : pieData.length > 0 ? (
           <div className="h-44">
             <ResponsiveContainer width="100%" height="100%">
@@ -73,9 +73,7 @@ export default function CustomerOverviewPanel() {
             </ResponsiveContainer>
           </div>
         ) : (
-          <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
-            暂无客户数据
-          </div>
+          <EmptyState compact className="h-24" title="暂无客户数据" />
         )}
 
         {/* By status badges */}

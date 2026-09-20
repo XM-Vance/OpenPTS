@@ -38,3 +38,38 @@ export async function genManualDemo(): Promise<{ rows: number; message: string }
   const { data } = await apiClient.post('/api/v1/settlement/manual-data/demo-data');
   return data;
 }
+
+// ─── 批量导入（WP1.6）───
+
+export interface ManualImportLine {
+  line_no: number;
+  operating_month: string;
+  category: string;
+  item_name: string;
+  value: number;
+  unit: string;
+  source?: string;
+  errors?: string[];
+}
+
+export interface ManualImportResult {
+  dry_run: boolean;
+  total: number;
+  valid: number;
+  inserted?: number;
+  rows: ManualImportLine[];
+}
+
+export async function importManualData(
+  file: File,
+  dryRun: boolean,
+): Promise<ManualImportResult> {
+  const form = new FormData();
+  form.append('file', file);
+  const { data } = await apiClient.post(
+    '/api/v1/settlement/manual-data/import',
+    form,
+    { params: { dry_run: dryRun ? 'true' : 'false' } },
+  );
+  return data;
+}

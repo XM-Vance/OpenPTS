@@ -4,10 +4,10 @@
 # 不要在别处复制本文件（曾有 backend/docs/openapi.yaml 拷贝，已于 2026-06 删除）。
 openapi: 3.1.0
 info:
-  title: OpenPTS 网关 API
+  title: PTIS 网关 API
   version: '1.0'
   description: |
-    OpenPTS（开放式电力交易系统）网关接口。
+    电力交易信息系统网关接口。
     所有 `/api/v1/*` 端点除 `/auth/login` 外均需 Bearer JWT 鉴权；
     业务写操作另外受 RBAC 权限码控制（如 `customer_management:write`）。
 
@@ -44,7 +44,7 @@ components:
       required: [username, password]
       properties:
         username: { type: string, example: admin }
-        password: { type: string, example: your_password }
+        password: { type: string, example: admin123 }
     LoginResponse:
       # 登录态同时经 Set-Cookie(ptis_token, httpOnly)下发;body 中的 token 仅供脚本/工具。
       type: object
@@ -55,6 +55,7 @@ components:
         username: { type: string }
     DashboardSummary:
       type: object
+      required: [customer_count, active_contracts, active_packages, pending_alerts, critical_alerts, active_stations, storage_30d_revenue, freq_7d_revenue]
       properties:
         customer_count:       { type: integer }
         active_contracts:     { type: integer }
@@ -69,6 +70,7 @@ components:
           nullable: true
     DailySeriesPoint:
       type: object
+      required: [date, value]
       properties:
         date:  { type: string, format: date-time }
         value: { type: number }
@@ -91,23 +93,26 @@ components:
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         org_id:     { type: string, format: uuid, nullable: true, description: "归属省份（多租户）" }
+        agent_id:   { type: string, format: uuid, nullable: true, description: "所属代理商 FK（Phase 2，取代 source 名字弱关联）" }
     ScheduledJob:
       type: object
-      # 与后端调度任务结构对齐（scheduler.ts）。
-      required: [id, name, cron_expr, handler, enabled, created_at, updated_at]
+      # 与后端调度任务结构对齐（scheduler_repository.go）。
+      required: [id, name, cron_expr, handler, enabled, max_retries, trade_day_only, created_at, updated_at]
       properties:
-        id:          { type: string, format: uuid }
-        name:        { type: string }
-        description: { type: string, nullable: true }
-        cron_expr:   { type: string }
-        handler:     { type: string }
-        enabled:     { type: boolean }
-        last_run_at: { type: string, format: date-time, nullable: true }
-        last_status: { type: string, nullable: true }
-        last_error:  { type: string, nullable: true }
-        next_run_at: { type: string, format: date-time, nullable: true }
-        created_at:  { type: string, format: date-time }
-        updated_at:  { type: string, format: date-time }
+        id:             { type: string, format: uuid }
+        name:           { type: string }
+        description:    { type: string, nullable: true }
+        cron_expr:      { type: string }
+        handler:        { type: string }
+        enabled:        { type: boolean }
+        max_retries:    { type: integer, description: "失败最大重试次数（0=不重试）" }
+        trade_day_only: { type: boolean, description: "是否仅在交易日（跳过周末+法定假日）执行" }
+        last_run_at:    { type: string, format: date-time, nullable: true }
+        last_status:    { type: string, nullable: true }
+        last_error:     { type: string, nullable: true }
+        next_run_at:    { type: string, format: date-time, nullable: true }
+        created_at:     { type: string, format: date-time }
+        updated_at:     { type: string, format: date-time }
     AuditLog:
       type: object
       # 必填字段（中间件落库时一定有值）；其余可空。required 让生成的 TS 类型非可选，
@@ -127,6 +132,175 @@ components:
         duration_ms:   { type: integer }
         error_message: { type: string, nullable: true }
         created_at:    { type: string, format: date-time }
+    SettlementDaily:
+      type: object
+      # 与后端 db.SettlementDaily 对齐（settlement_repository.go）。
+      required: [id, operating_date, version, created_at]
+      properties:
+        id:                      { type: string, format: uuid }
+        operating_date:          { type: string, format: date }
+        version:                 { type: string }
+        contract_fee:            { type: number, nullable: true }
+        day_ahead_fee:           { type: number, nullable: true }
+        real_time_fee:           { type: number, nullable: true }
+        total_energy_fee:        { type: number, nullable: true }
+        energy_avg_price:        { type: number, nullable: true }
+        deviation_recovery_fee:  { type: number, nullable: true }
+        created_at:              { type: string, format: date-time }
+    PeriodDetail:
+      type: object
+      required: [period, volume_mwh, price, fee]
+      properties:
+        period:      { type: integer }
+        volume_mwh:  { type: number }
+        price:       { type: number }
+        fee:         { type: number }
+    SettlementDetail:
+      allOf:
+        - $ref: '#/components/schemas/SettlementDaily'
+        - type: object
+          required: [period_details]
+          properties:
+            period_details:
+              type: array
+              items: { $ref: '#/components/schemas/PeriodDetail' }
+    CarbonQuote:
+      type: object
+      # 与后端 db.CarbonQuote 对齐（carbon_repository.go）。
+      required: [id, product, trade_date, created_at]
+      properties:
+        id:          { type: integer }
+        product:     { type: string }
+        trade_date:  { type: string, format: date }
+        open_price:  { type: number, nullable: true }
+        high_price:  { type: number, nullable: true }
+        low_price:   { type: number, nullable: true }
+        close_price: { type: number, nullable: true }
+        volume:      { type: number, nullable: true }
+        turnover:    { type: number, nullable: true }
+        created_at:  { type: string, format: date-time }
+    CarbonProductSummary:
+      type: object
+      required: [product, name, unit]
+      properties:
+        product:     { type: string }
+        name:        { type: string }
+        unit:        { type: string }
+        latest_date: { type: string, format: date, nullable: true }
+        close:       { type: number, nullable: true }
+        prev_close:  { type: number, nullable: true }
+        change:      { type: number, nullable: true }
+        change_pct:  { type: number, nullable: true }
+        volume:      { type: number, nullable: true }
+        high_52w:    { type: number, nullable: true }
+        low_52w:     { type: number, nullable: true }
+    PricingModel:
+      type: object
+      required: [code, display_name, package_type, pricing_mode, enabled, sort_order]
+      properties:
+        code:          { type: string }
+        display_name:  { type: string }
+        package_type:  { type: string }
+        pricing_mode:  { type: string }
+        enabled:       { type: boolean }
+        sort_order:    { type: integer }
+    RetailPackage:
+      type: object
+      required: [id, package_name, package_type, is_green_power, status, created_at, updated_at]
+      properties:
+        id:             { type: string, format: uuid }
+        package_name:   { type: string }
+        package_type:   { type: string }
+        model_code:     { type: string, nullable: true }
+        is_green_power: { type: boolean }
+        status:         { type: string }
+        description:    { type: string, nullable: true }
+        pricing_config: { type: object, additionalProperties: true, nullable: true }
+        created_at:     { type: string, format: date-time }
+        updated_at:     { type: string, format: date-time }
+    RetailContract:
+      type: object
+      required: [id, customer_id, customer_name, package_id, package_name_snapshot, purchasing_energy_mwh, purchase_start_month, purchase_end_month, status, created_at, updated_at]
+      properties:
+        id:                    { type: string, format: uuid }
+        customer_id:           { type: string, format: uuid }
+        customer_name:         { type: string }
+        package_id:            { type: string, format: uuid }
+        package_name_snapshot: { type: string }
+        purchasing_energy_mwh: { type: number }
+        green_power_ratio:     { type: number, nullable: true }
+        purchase_start_month:  { type: string }
+        purchase_end_month:    { type: string }
+        status:                { type: string }
+        created_at:            { type: string, format: date-time }
+        updated_at:            { type: string, format: date-time }
+
+    PriceForecast:
+      type: object
+      description: 电价预测结果（48 点曲线 + 置信带 + 摘要）
+      properties:
+        forecast:      { type: array, items: { type: number }, description: "48 点预测价格（元/MWh）" }
+        lower:         { type: array, items: { type: number }, description: "置信带下界" }
+        upper:         { type: array, items: { type: number }, description: "置信带上界" }
+        total:         { type: number, description: "预测总量" }
+        peak:          { type: number, description: "峰值预测" }
+        valley:        { type: number, description: "谷值预测" }
+        method:        { type: string, description: "算法标识（LEAR/相似日加权平均）" }
+        sample_days:   { type: integer, description: "训练样本天数" }
+        target_weekday: { type: integer, description: "目标日星期（0=周一）" }
+
+    PriceForecastRecord:
+      type: object
+      description: 价格预测历史记录（含准确率，若已回填）
+      properties:
+        forecast_id:       { type: string, format: uuid }
+        forecast_date:     { type: string, format: date }
+        target_date:       { type: string, format: date }
+        price_da_forecast: { type: array, items: { type: number } }
+        forecast_method:   { type: string }
+        accuracy_metrics:
+          type: object
+          nullable: true
+          properties:
+            wmape: { type: number, description: "加权平均百分比误差（0~1）" }
+            mae:   { type: number }
+            rmse:  { type: number }
+        operator:   { type: string }
+        created_at: { type: string, format: date-time }
+
+    LoadForecastCurve:
+      type: object
+      description: 负荷预测曲线（96 点 + 置信带 + 摘要）
+      properties:
+        forecast:       { type: array, items: { type: number }, description: "96 点预测负荷（MWh）" }
+        lower:          { type: array, items: { type: number } }
+        upper:          { type: array, items: { type: number } }
+        total:          { type: number }
+        peak:           { type: number }
+        valley:         { type: number }
+        method:         { type: string, description: "算法标识（相似日加权平均/LEAR）" }
+        sample_days:    { type: integer }
+
+    LoadForecastData:
+      type: object
+      description: 负荷预测数据（含 actual 回填 + 准确率）
+      properties:
+        forecast_id:     { type: string, format: uuid }
+        customer_id:     { type: string }
+        target_date:     { type: string }
+        values:          { type: array, items: { type: number }, description: "96 点预测值" }
+        actual_values:   { type: array, items: { type: number }, nullable: true }
+        confidence_lower: { type: array, items: { type: number }, nullable: true }
+        confidence_upper: { type: array, items: { type: number }, nullable: true }
+        pred_sum:        { type: number, nullable: true }
+        method:          { type: string }
+        accuracy:
+          type: object
+          nullable: true
+          properties:
+            wmape_accuracy: { type: number, description: "准确率（1-wmape，0~1）" }
+            mae:   { type: number }
+            rmse:  { type: number }
 
 security:
   - BearerAuth: []
@@ -303,6 +477,20 @@ paths:
       summary: 删除客户（customer_management:delete）
       responses: { '200': { description: 已删除 } }
 
+  /api/v1/retail/contracts/{id}/pdf:
+    post:
+      tags: [零售]
+      summary: 生成合同文档（WP6.2：自包含 HTML，浏览器打印即 PDF；替代 501 占位）
+      description: |
+        中文零依赖的自包含 HTML（内联样式 + 打印 CSS + 签章位），浏览器「打印→存为 PDF」
+        即正式文件；有 MinIO 时自动归档为合同附件（contracts/{id}/contract_{id}.html）。
+        服务端 Chromium 渲染真 PDF 为后续增强（format=pdf）。
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: 文档（text/html 或归档后附件信息） }
+        '404': { description: 合同不存在 }
+
   /api/v1/retail/contracts:
     get:
       tags: [零售]
@@ -310,8 +498,702 @@ paths:
       responses: { '200': { description: 合同列表 } }
     post:
       tags: [零售]
-      summary: 新建合同（retail_management:write）
-      responses: { '201': { description: 已创建 } }
+      summary: 新建合同（WP6.1：默认走审批，通过后自动落库；submit_approval=false 直建）
+      responses:
+        '201': { description: 已直接创建 }
+        '202': { description: 已提交审批 }
+
+  /api/v1/load-data/calibrations:
+    post:
+      tags: [负荷]
+      summary: 负荷校准计算并保存预览（WP6.4，恢复被 YAGNI 删除的校准）
+      description: |
+        表计侧=raw_meter_data 逐点×倍率/4 聚合；系统侧=user_load_data 合计；
+        系数=meter/system。任一侧无数据返回 400 引导先导入（不臆造）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, month]
+              properties:
+                customer_id: { type: string, format: uuid }
+                month: { type: string, description: YYYY-MM }
+                note: { type: string }
+      responses:
+        '200': { description: 预览已保存（status=preview） }
+        '400': { description: 数据缺失/参数错误 }
+    get:
+      tags: [负荷]
+      summary: 校准台账（月份过滤）
+      parameters:
+        - { in: query, name: month, schema: { type: string } }
+      responses:
+        '200': { description: 台账列表 }
+
+  /api/v1/load-data/calibrations/{id}/apply:
+    post:
+      tags: [负荷]
+      summary: 应用校准（该月系统侧曲线/合计按系数缩放；重复应用拒绝）
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: 已应用 }
+        '400': { description: 不存在或已应用 }
+
+  /api/v1/load-data/calibrations/{id}/void:
+    post:
+      tags: [负荷]
+      summary: 作废校准（已缩放数据不自动回滚，重导可恢复）
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: 已作废 }
+
+  /api/v1/grid/models:
+    get:
+      tags: [调度]
+      summary: 电网模型列表（WP3.6）
+      responses:
+        '200': { description: 模型列表 }
+    post:
+      tags: [调度]
+      summary: 创建/更新电网模型（(org,name) 幂等；替代前端写死的玩具网络）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, config]
+              properties:
+                name: { type: string }
+                model_type: { type: string, enum: [pandapower, pgm, pypsa], default: pandapower }
+                config: { type: object, description: 拓扑配置（节点/线路/负荷/机组 JSON） }
+                description: { type: string }
+      responses:
+        '200': { description: 已保存 }
+        '400': { description: 参数错误/未选省份 }
+
+  /api/v1/grid/models/{name}/powerflow:
+    post:
+      tags: [调度]
+      summary: 以保存的模型跑潮流（pandapower）
+      parameters:
+        - { in: path, name: name, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 潮流结果透传 }
+        '404': { description: 模型不存在 }
+        '502': { description: 算法服务不可达 }
+
+  /api/v1/grid/models/{name}/state-estimation:
+    post:
+      tags: [调度]
+      summary: PGM 状态估计（WP3.6：自死代码激活）
+      parameters:
+        - { in: path, name: name, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                measurements: { type: object }
+      responses:
+        '200': { description: 状态估计结果（节点电压） }
+
+  /api/v1/grid/models/{name}/short-circuit:
+    post:
+      tags: [调度]
+      summary: PGM 短路计算（WP3.6：自死代码激活）
+      parameters:
+        - { in: path, name: name, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [faults]
+              properties:
+                faults:
+                  type: array
+                  items: { type: object }
+      responses:
+        '200': { description: 短路计算结果 }
+
+  /api/v1/rpa/jobs:
+    post:
+      tags: [调度]
+      summary: 注册/更新 RPA job（WP3.5）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                schedule: { type: string, description: 计划描述 }
+                action: { type: string, enum: [declaration_export, external] }
+      responses:
+        '200': { description: 已注册 }
+        '400': { description: 参数错误 }
+
+  /api/v1/rpa/jobs/{name}/trigger:
+    post:
+      tags: [调度]
+      summary: 手动触发 RPA job（WP3.5）
+      description: |
+        declaration_export（内建动作）：扫描 submitted 申报单并导出 xlsx 报送文件，同步落 run；
+        external：创建 running run，由外挂执行器经 POST /rpa/runs 上报结果。
+      parameters:
+        - { in: path, name: name, required: true, schema: { type: string } }
+      responses:
+        '200': { description: run 已创建/已完成 }
+        '404': { description: job 不存在 }
+
+  /api/v1/rpa/runs:
+    post:
+      tags: [调度]
+      summary: RPA run 结果上报（WP3.5，API Key 鉴权，外挂执行器通道）
+      description: 'Authorization: Bearer ptis_xxx；status success/failed，重复收口拒绝。'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [run_id, status]
+              properties:
+                run_id: { type: string, format: uuid }
+                status: { type: string, enum: [success, failed] }
+                output_files: { type: integer }
+                output_bytes: { type: integer }
+                error: { type: string }
+      responses:
+        '200': { description: run 已收口 }
+        '401': { description: API Key 无效 }
+        '404': { description: run 不存在或已收口 }
+
+  /api/v1/rpa/jobs/{name}/next-task:
+    get:
+      tags: [调度]
+      summary: RPA 取活（WP3.5，API Key）——返回待执行任务（如待报送申报单）
+      parameters:
+        - { in: path, name: name, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 任务清单（含 export_url） }
+        '401': { description: API Key 无效 }
+
+  /api/v1/carbon/trades:
+    post:
+      tags: [价格]
+      summary: 碳交易记录（WP5.5：买/卖，加权均价滚动持仓）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trade_date, product, side, quantity, price]
+              properties:
+                trade_date: { type: string, format: date }
+                product: { type: string, enum: [CEA, CCER] }
+                side: { type: string, enum: [buy, sell] }
+                quantity: { type: number, description: 吨 }
+                price: { type: number, description: 元/吨（参考 carbon_quotes 行情真值） }
+                note: { type: string }
+      responses:
+        '201': { description: 已记录（持仓已滚动） }
+        '400': { description: 参数错误/未选省份 }
+    get:
+      tags: [价格]
+      summary: 碳交易记录列表
+      responses:
+        '200': { description: 交易列表 }
+
+  /api/v1/carbon/positions:
+    get:
+      tags: [价格]
+      summary: 碳持仓台账（CEA/CCER，加权均价；卖超转 short 缺口）
+      responses:
+        '200': { description: 持仓列表 }
+
+  /api/v1/carbon/compliance:
+    put:
+      tags: [价格]
+      summary: 录入年度应清缴配额（WP5.5）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [compliance_year, quota_tons]
+              properties:
+                compliance_year: { type: integer }
+                quota_tons: { type: number, description: 应清缴配额 吨 }
+                deadline: { type: string, format: date }
+                note: { type: string }
+      responses:
+        '200': { description: 已保存 }
+    get:
+      tags: [价格]
+      summary: 履约总览（配额—已清缴—缺口—可用持仓自动计算）
+      parameters:
+        - { in: query, name: year, schema: { type: integer } }
+      responses:
+        '200': { description: 年度履约行列表 }
+
+  /api/v1/carbon/compliance/surrender:
+    post:
+      tags: [价格]
+      summary: 履约清缴（扣 CEA 持仓；pending→partial→cleared；超额拒绝）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [compliance_year, tons]
+              properties:
+                compliance_year: { type: integer }
+                tons: { type: number, description: 本次清缴 吨 }
+      responses:
+        '200': { description: 已清缴 }
+        '400': { description: 持仓不足/参数错误 }
+
+  /api/v1/green-power/certificates:
+    post:
+      tags: [零售]
+      summary: 绿证申领（WP5.4：cert_no 幂等，可关联绿电成交）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cert_no, energy_mwh]
+              properties:
+                cert_no: { type: string, description: 绿证编号 }
+                energy_mwh: { type: number, description: 对应电量（1 证=1MWh 口径由调用方换算） }
+                source_trade_id: { type: string, format: uuid }
+                note: { type: string }
+      responses:
+        '201': { description: 已申领（status=applied） }
+        '400': { description: 参数错误/未选省份 }
+    get:
+      tags: [零售]
+      summary: 绿证台账（状态过滤）
+      parameters:
+        - { in: query, name: status, schema: { type: string, enum: [applied, issued, redeemed, void] } }
+      responses:
+        '200': { description: 台账列表（含核销客户名） }
+
+  /api/v1/green-power/certificates/{id}/{action}:
+    post:
+      tags: [零售]
+      summary: 绿证状态流转（WP5.4：issue 核发 / redeem 核销 / void 作废）
+      description: redeem 需 body.customer_id（核销给哪个客户）；issued→redeemed、applied/issued→void。
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: action, required: true, schema: { type: string, enum: [issue, redeem, void] } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customer_id: { type: string, format: uuid }
+                note: { type: string }
+      responses:
+        '200': { description: 已流转 }
+        '400': { description: 状态不允许/缺客户 }
+
+  /api/v1/green-power/premium-summary:
+    get:
+      tags: [零售]
+      summary: 客户绿电溢价汇总（WP5.4 结算联动：Σ premium×energy 按客户）
+      parameters:
+        - { in: query, name: month, schema: { type: string, description: YYYY-MM } }
+      responses:
+        '200': { description: 客户×电量×溢价合计 }
+
+  /api/v1/vpp/resources:
+    post:
+      tags: [系统]
+      summary: VPP 资源创建/更新（WP5.3：名称唯一，可关联客户/储能站）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resource_name, capacity_mw]
+              properties:
+                resource_name: { type: string }
+                resource_type: { type: string, description: storage/demand_response/pv/ev_charger }
+                capacity_mw: { type: number, description: 可调容量 MW }
+                status: { type: string }
+                location: { type: string }
+                customer_id: { type: string, format: uuid, description: 关联客户（聚合曲线数据源） }
+                storage_station_id: { type: string, format: uuid }
+      responses:
+        '200': { description: 已保存 }
+        '400': { description: 参数错误/未选省份 }
+
+  /api/vpp/aggregate-curve:
+    get:
+      tags: [系统]
+      summary: VPP 聚合曲线（WP5.3：Σ 关联客户 curve_96，kW→MW）
+      parameters:
+        - { in: query, name: date, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 96 点聚合曲线（无关联数据返回空数组与 empty_reason） }
+
+  /api/v1/vpp/dispatch-invites:
+    post:
+      tags: [系统]
+      summary: 创建 VPP 调度邀约（WP5.3）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resource_id, dispatch_date, invited_mw]
+              properties:
+                resource_id: { type: string, format: uuid }
+                dispatch_date: { type: string, format: date }
+                dispatch_type: { type: string, description: peak_shaving/valley_fill }
+                invited_mw: { type: number, description: 邀约量 MW }
+      responses:
+        '201': { description: 邀约已创建（status=invited） }
+    get:
+      tags: [系统]
+      summary: 邀约列表（含响应留痕）
+      responses:
+        '200': { description: 列表 }
+
+  /api/v1/vpp/dispatch-invites/{id}/respond:
+    post:
+      tags: [系统]
+      summary: 响应邀约（量/时长/响应速度/收益落库，status=completed）
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dispatched_mw, duration_min]
+              properties:
+                dispatched_mw: { type: number }
+                duration_min: { type: integer }
+                response_time_sec: { type: integer }
+                revenue: { type: number }
+      responses:
+        '200': { description: 已记录 }
+        '400': { description: 邀约不存在或已响应 }
+
+  /api/v1/vpp/monthly-revenue:
+    get:
+      tags: [系统]
+      summary: VPP 近 N 月邀约收益汇总（前端趋势真数据源）
+      parameters:
+        - { in: query, name: months, schema: { type: integer, default: 6 } }
+      responses:
+        '200': { description: 月份×收益列表 }
+
+  /api/v1/freq/performance:
+    get:
+      tags: [系统]
+      summary: 调频考核指标列表（WP5.2：雷达图真数据源）
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 30 } }
+      responses:
+        '200': { description: 指标列表（五项评分 + 里程） }
+
+  /api/v1/freq/performance/import:
+    post:
+      tags: [系统]
+      summary: 调频考核指标导入（WP5.2，CSV：日期,类型,响应,精度,持续,延迟,容量,里程）
+      description: dry_run 默认 true（逐行校验 0-100 评分/AGC-AVC 类型/日期格式）。
+      parameters:
+        - { in: query, name: dry_run, schema: { type: string, enum: ['true', 'false'], default: 'true' } }
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200': { description: 预览/导入结果 }
+        '400': { description: 文件缺失/未选省份 }
+
+  /api/v1/freq/clearing/recalculate:
+    post:
+      tags: [系统]
+      summary: 调频清算参数化重算（WP5.2，替换 rand 造数）
+      description: |
+        按考核指标（里程/容量评分）与规则参数（freq_mileage_price /
+        freq_capacity_comp_coef，闽/皖规则表可调）重算某日清算：
+        revenue = 里程×里程价 + 容量评分/100×系数×里程×里程价。
+        无该日考核数据返回 400 引导先导入。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date]
+              properties:
+                date: { type: string, format: date }
+      responses:
+        '200': { description: 重算结果（含所用参数） }
+        '400': { description: 无考核数据/参数错误 }
+
+  /api/v1/storage/stations:
+    post:
+      tags: [系统]
+      summary: 创建储能站点（WP5.1：站点 CRUD，此前仅 List+demo）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, capacity_mwh, max_power_mw]
+              properties:
+                name: { type: string }
+                capacity_mwh: { type: number, description: 容量 MWh }
+                max_power_mw: { type: number, description: 最大功率 MW }
+                location: { type: string }
+                status: { type: string, description: active/maintenance/offline }
+      responses:
+        '201': { description: 已创建 }
+        '400': { description: 参数错误/未选省份 }
+
+  /api/v1/storage/stations/{id}:
+    put:
+      tags: [系统]
+      summary: 更新储能站点（部分字段可选）
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: 已更新 }
+        '404': { description: 站点不存在 }
+    delete:
+      tags: [系统]
+      summary: 删除储能站点（日运营记录级联删除）
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: 已删除 }
+
+  /api/v1/storage/schedule/generate:
+    post:
+      tags: [系统]
+      summary: 生成储能调度计划（WP5.1：日前价 96 点 + LP 求解 → storage_schedules）
+      description: |
+        取 schedule_date 当日已导入日前价（48→96 点，dt=0.25h）+ 站点容量/功率，
+        调 linopy/HiGHS LP 求解充放电计划（SOC 动态/容量/期末不净耗电约束），
+        落 storage_schedules 96 行（同站同日覆盖）。无价格数据返回 400 引导导入。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [station_id, schedule_date]
+              properties:
+                station_id: { type: string, format: uuid }
+                schedule_date: { type: string, format: date }
+      responses:
+        '200': { description: 计划已生成（periods/profit/method/optimization_id） }
+        '400': { description: 无价格数据/参数错误 }
+        '502': { description: LP 服务不可达 }
+
+  /api/v1/storage/schedule:
+    get:
+      tags: [系统]
+      summary: 查询储能调度计划（激活 storage_schedules 死表）
+      parameters:
+        - { in: query, name: station_id, schema: { type: string, format: uuid } }
+        - { in: query, name: date, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 96 点计划行列表 }
+
+  /api/v1/declarations:
+    get:
+      tags: [价格]
+      summary: 申报列表（WP3.4：日前/滚动/储能申报闭环）
+      parameters:
+        - { in: query, name: type, schema: { type: string, enum: [day_ahead, rolling, storage] } }
+        - { in: query, name: start, schema: { type: string, format: date } }
+        - { in: query, name: end, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 申报列表 }
+
+  /api/v1/declarations/{type}/{date}:
+    put:
+      tags: [价格]
+      summary: 保存申报草稿（同类型同日覆盖；已确认终态拒绝）
+      parameters:
+        - { in: path, name: type, required: true, schema: { type: string, enum: [day_ahead, rolling, storage] } }
+        - { in: path, name: date, required: true, schema: { type: string, format: date } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [periods]
+              properties:
+                periods:
+                  type: array
+                  items:
+                    type: object
+                    required: [period, volume_mwh]
+                    properties:
+                      period: { type: integer, minimum: 1, maximum: 96 }
+                      volume_mwh: { type: number }
+                      price: { type: number, description: 元/MWh（可选） }
+                source: { type: string, description: manual / forecast_suggest }
+                note: { type: string }
+      responses:
+        '200': { description: 已保存草稿 }
+        '400': { description: 参数错误/终态拒绝/未选省份 }
+
+  /api/v1/declarations/suggest/day-ahead/{date}:
+    get:
+      tags: [价格]
+      summary: 申报建议曲线（系统聚合负荷预测 96 点 → 逐时段 MWh；无预测 400 引导先跑预测）
+      parameters:
+        - { in: path, name: date, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: periods + 总量 + 预测来源 }
+        '400': { description: 无预测数据 }
+
+  /api/v1/declarations/{id}:
+    get:
+      tags: [价格]
+      summary: 申报详情
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: 申报单 }
+        '404': { description: 不存在 }
+
+  /api/v1/declarations/{id}/submit:
+    post:
+      tags: [价格]
+      summary: 提交申报（draft → submitted）
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: 已提交 }
+        '400': { description: 状态不允许 }
+
+  /api/v1/declarations/{id}/confirm:
+    post:
+      tags: [价格]
+      summary: 确认申报（submitted → confirmed，终态）
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: 已确认 }
+        '400': { description: 状态不允许 }
+
+  /api/v1/declarations/{id}/void:
+    post:
+      tags: [价格]
+      summary: 作废申报（draft/submitted → void）
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: 已作废 }
+        '400': { description: 状态不允许 }
+
+  /api/v1/declarations/{id}/export:
+    get:
+      tags: [价格]
+      summary: 申报报送单导出（xlsx/csv 量价格式；平台直连为后续 adapter）
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: format, schema: { type: string, enum: [xlsx, csv], default: xlsx } }
+      responses:
+        '200': { description: 报送单文件流 }
+
+  /api/v1/trade/bidding/backtest:
+    post:
+      tags: [价格]
+      summary: 竞价策略回测（WP3.3，真实日前价历史 → 逐日模拟盈亏/敏感性/推荐）
+      description: |
+        策略模型：日申报量 + 报价上限 cap + 基准采购价（缺省=历史均价）。
+        逐日：日均出清价 ≤ cap 成交（盈亏=vol×(bench−avg)），否则按基准价补购（盈亏 0）。
+        响应含三面板数据：backtest（daily+summary）、sensitivity（cap ±10%/±20% 档）、
+        recommendation（累计盈亏最高档）。日前价历史 <7 天返回 400 引导导入。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [volume_mwh_per_day, price_cap]
+              properties:
+                days: { type: integer, default: 60, description: 历史窗口天数 }
+                volume_mwh_per_day: { type: number, description: 日申报量 MWh }
+                price_cap: { type: number, description: 报价上限 元/MWh }
+                benchmark_price: { type: number, description: 基准采购价（缺省历史均价） }
+      responses:
+        '200': { description: backtest + sensitivity + recommendation }
+        '400': { description: 参数错误或日前价历史不足 }
+
+  /api/v1/contract-price/daily-summary:
+    get:
+      tags: [价格]
+      summary: 合同电价日汇总（WP2.3，自空态 stub 实现真逻辑）
+      parameters:
+        - { in: query, name: date, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: kpis（总量/加权均价/区间）+ type_summary（分套餐明细）
+
+  /api/v1/contract-price-trend/price-trend:
+    get:
+      tags: [价格]
+      summary: 合同电价日趋势（WP2.3）
+      parameters:
+        - { in: query, name: start_date, schema: { type: string, format: date } }
+        - { in: query, name: end_date, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: daily_trends 序列（period_48_trends 暂无数据源返回空）
+
+  /api/v1/load/medium-forecast/compute:
+    post:
+      tags: [负荷]
+      summary: 生成中长期负荷预测（WP2.3，真实月度电量输入）
+      description: |
+        历史 ≥13 月：同比 ×(1+近3月同比增速均值)；6~12 月：近 6 月均值外推（置信低）；
+        <6 月：400 引导先导入表计/负荷数据（不造数）。结果落 medium_load_forecast。
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                months: { type: integer, default: 6 }
+      responses:
+        '200': { description: 逐月预测与方法标注 }
+        '400': { description: 历史月度电量不足 }
 
   /api/v1/price/trend/daily:
     get:
@@ -322,6 +1204,83 @@ paths:
           name: days
           schema: { type: integer, default: 30 }
       responses: { '200': { description: 日序列 } }
+
+  /api/v1/price/forecast:
+    post:
+      tags: [价格]
+      summary: 日前价格预测（WP2.2 统一出口：默认 LEAR，相似日为回退/显式选择）
+      description: |
+        body 可传 model：lear（默认）或 similar。lear 失败（无历史/算法不可达）时
+        回退相似日并在响应标注 model=similar_day_fallback 与 fallback_reason；
+        无历史数据直接 400。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_date]
+              properties:
+                target_date: { type: string, format: date }
+                model: { type: string, enum: [lear, similar], default: lear }
+      responses:
+        '200':
+          description: 预测结果（model/fallback_reason/forecast）
+        '400':
+          description: 目标日格式错误或无历史价格数据
+
+  /api/v1/price/forecast/lear:
+    post:
+      tags: [价格]
+      summary: LEAR 日前电价预测（LASSO 自回归 + 外生变量 + 落库）
+      description: |
+        取最近 60 天日前价历史 + 系统负荷外生变量 → 调 algo LEAR → 落 price_forecast_results → 返回。
+        算法原理：Lago et al. Applied Energy 2021, 293:116983。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_date]
+              properties:
+                target_date: { type: string, format: date, description: "目标日 YYYY-MM-DD" }
+                use_exogenous: { type: boolean, default: true, description: "是否取系统负荷作外生变量" }
+      responses:
+        '200':
+          description: LEAR 预测结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  target_date: { type: string }
+                  history_days: { type: integer }
+                  exogenous_days: { type: integer }
+                  forecast_id: { type: string, format: uuid }
+                  forecast: { $ref: '#/components/schemas/PriceForecast' }
+
+  /api/v1/price/forecast/results:
+    get:
+      tags: [价格]
+      summary: 查询某目标日的所有预测版本（含准确率，目标日已过会懒回填）
+      parameters:
+        - in: query
+          name: target_date
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: 预测版本列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  target_date: { type: string }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PriceForecastRecord' }
 
   /api/v1/settlement/daily:
     get:
@@ -334,6 +1293,153 @@ paths:
       tags: [结算]
       summary: 批发月度结算列表
       responses: { '200': { description: 月度结算 } }
+
+  /api/v1/import/meter:
+    post:
+      tags: [负荷]
+      summary: 表计数据导入（营销系统/交易中心导出 CSV/XLSX → raw_meter_data，WP0.3）
+      description: |
+        multipart/form-data，字段 file。dry_run 默认 true（先预览再提交）。
+        版式（首行表头）：客户（名称或 UUID）、电表编号、日期、倍率（可选默认 1）、曲线。
+        曲线三形态自动识别：逗号串 96/48 点（48 自动 ×2 升 96）、展开 96/48 列、
+        单个日总电量 kWh（均匀铺 96 点，响应标 estimated）。
+        正式导入后自动按 (customer, date) 聚合（Σ 表计曲线×倍率）写
+        user_load_data + unified_load_curve（method='meter_sum'）。幂等：同 (表号,日期) 覆盖。
+      parameters:
+        - { in: query, name: dry_run, schema: { type: string, enum: ['true', 'false'], default: 'true' } }
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: 预览/导入结果（rows 逐行校验、inserted、aggregated）
+        '400':
+          description: 文件缺失/格式错误/未选省份
+
+  /api/v1/load/aggregate-meter:
+    post:
+      tags: [负荷]
+      summary: 手动触发表计负荷聚合作业（raw → user_load_data + unified_load_curve）
+      parameters:
+        - { in: query, name: start, schema: { type: string, format: date } }
+        - { in: query, name: end, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: 聚合统计（aggregated/skipped）
+        '400':
+          description: 日期参数错误
+
+  /api/v1/dashboard/market-overview:
+    get:
+      tags: [仪表盘]
+      summary: 市场交易概览（最近 N 个月全市场均价 vs 本公司电量，WP1.5）
+      description: 任何已登录用户可访问。总部「全部省」口径：均价按月取各省均值、电量汇总。
+      parameters:
+        - { in: query, name: months, schema: { type: integer, default: 6 } }
+      responses:
+        '200':
+          description: 月份/市场均价(元/MWh)/本公司电量(MWh) 列表
+
+  /api/v1/price/import-day-ahead:
+    post:
+      tags: [价格]
+      summary: 现货日前价导入（交易中心导出 CSV/XLSX → day_ahead_spot_price）
+      description: |
+        multipart/form-data，字段 file。dry_run 默认 true（先预览再提交，false 正式入库）。
+        版式（首行表头）：长格式 日期/时段(1-48 或 1-96)/价格(元/MWh)；
+        宽格式 日期 + 48 或 96 个时段价格列（96 点自动两两均值降 48）。
+        限价区间按活跃省规则表校验（闽 元/kWh×1000、赣 元/MWh，其余兜底 [-1000,5000]）。
+        正式导入后自动重算 spot_market_daily 日聚合。写操作须选定具体省份。
+      parameters:
+        - in: query
+          name: dry_run
+          schema: { type: string, enum: ['true', 'false'], default: 'true' }
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: 导入预览/结果（format/rows 按日汇总/valid_days/points/agg_refreshed）
+        '400':
+          description: 文件缺失、格式错误或未选省份
+
+  /api/v1/load/forecast:
+    post:
+      tags: [负荷]
+      summary: 短期负荷预测（取客户历史 → 相似日加权 → 96 点曲线）
+      description: |
+        可选持久化（注入 forecastRepo 时落 short_term_load_forecast 表）。
+        返回 forecast/lower/upper/total/peak/valley + method。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, target_date]
+              properties:
+                customer_id: { type: string, format: uuid, description: "客户ID（AGGREGATE=系统聚合）" }
+                target_date: { type: string, format: date }
+      responses:
+        '200':
+          description: 预测结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customer_id: { type: string }
+                  target_date: { type: string }
+                  forecast: { $ref: '#/components/schemas/LoadForecastCurve' }
+
+  /api/v1/load/forecast/data:
+    get:
+      tags: [负荷]
+      summary: 查短期负荷预测数据（目标日已过时懒回填 actual + 算准确率）
+      parameters:
+        - in: query
+          name: customer_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: target_date
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: 预测数据（含 actual_values + accuracy）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoadForecastData' }
+
+  /api/v1/load/forecast/versions:
+    get:
+      tags: [负荷]
+      summary: 列某客户某目标日的预测版本
+      parameters:
+        - in: query
+          name: customer_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: target_date
+          required: true
+          schema: { type: string, format: date }
+      responses: { '200': { description: 版本列表 } }
+
+  /api/v1/load/forecast/performance-overview:
+    get:
+      tags: [负荷]
+      summary: 负荷预测性能总览（按客户聚合准确率）
+      responses: { '200': { description: 性能总览 } }
 
   /api/v1/scheduler/jobs:
     get:

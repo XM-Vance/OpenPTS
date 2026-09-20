@@ -39,7 +39,9 @@ func (h *ContractPDFHandler) Generate(c *gin.Context) {
 		return
 	}
 
-	pdfBytes, err := contractpdf.Generate(contractpdf.ContractData{
+	// WP6.2：自包含 HTML（中文零依赖；浏览器「打印→存为 PDF」即正式文件）。
+	// 取代 gofpdf 移除后的 501 占位；Chromium 服务端渲染为后续增强（format=pdf）。
+	docBytes, err := contractpdf.GenerateHTML(contractpdf.ContractData{
 		ContractID:         ct.ID.String(),
 		CustomerName:       ct.CustomerName,
 		PackageName:        ct.PackageNameSnapshot,
@@ -50,21 +52,22 @@ func (h *ContractPDFHandler) Generate(c *gin.Context) {
 		Status:             ct.Status,
 	})
 	if err != nil {
-		log.Error().Err(err).Msg("PDF 生成失败")
+		log.Error().Err(err).Msg("合同文档生成失败")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请稍后重试"})
 		return
 	}
+	pdfBytes := docBytes
 
 	if h.store == nil {
 		// 无 MinIO 时直接返回二进制供下载
-		c.Header("Content-Type", "application/pdf")
+		c.Header("Content-Type", "text/html; charset=utf-8")
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"contract_%s.pdf\"", ct.ID.String()))
-		c.Data(http.StatusOK, "application/pdf", pdfBytes)
+		c.Data(http.StatusOK, "text/html; charset=utf-8", docBytes)
 		return
 	}
 
 	// 上传到 MinIO + 写 attachments 记录
-	filename := fmt.Sprintf("contract_%s.pdf", ct.ID.String())
+	filename := fmt.Sprintf("contract_%s.html", ct.ID.String())
 	objectKey := fmt.Sprintf("contracts/%s/%s", ct.ID.String(), filename)
 	if err := h.store.Put(c.Request.Context(), objectKey, bytes.NewReader(pdfBytes), int64(len(pdfBytes)), "application/pdf"); err != nil {
 		log.Error().Err(err).Msg("上传 MinIO 失败")
@@ -77,8 +80,8 @@ func (h *ContractPDFHandler) Generate(c *gin.Context) {
 		ResourceID:  ct.ID.String(),
 		Filename:    filename,
 		ObjectKey:   objectKey,
-		ContentType: "application/pdf",
-		Size:        int64(len(pdfBytes)),
+		ContentType: "text/html",
+		Size:        int64(len(docBytes)),
 		UploadedBy:  username,
 		Note:        "系统自动生成",
 	})

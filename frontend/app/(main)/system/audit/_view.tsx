@@ -29,6 +29,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { listAuditLogs, type AuditLog } from '@/lib/api/audit';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/feedback';
 
 const SELECT_CLASS =
   'flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm';
@@ -274,9 +276,9 @@ export default function SystemAuditPage() {
               <div style={{ width: '100%', height: 260 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={barData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6b7280' }} />
-                    <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={40} />
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 12 }} width={40} />
                     <Tooltip contentStyle={{ fontSize: 12 }} />
                     <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                   </BarChart>
@@ -305,9 +307,7 @@ export default function SystemAuditPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={8}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {items.map((a) => {
@@ -338,9 +338,7 @@ export default function SystemAuditPage() {
             })}
             {items.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  暂无审计记录
-                </TableCell>
+                <TableCell colSpan={8}><EmptyState compact title="暂无审计记录" /></TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -352,7 +350,7 @@ export default function SystemAuditPage() {
         <span>
           共 {total} 条 · 第 {page} / {totalPages} 页
         </span>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             size="sm"

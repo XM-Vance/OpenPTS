@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/table';
 import { StatCard } from '@/components/data-display/stat-card';
 import { ChartContainer } from '@/components/charts/chart-container';
-import { DemoBadge } from '@/components/feedback';
+import { EmptyState, DemoBadge } from '@/components/feedback';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
 import {
@@ -43,6 +43,7 @@ import {
   type DailyWeatherSummary,
 } from '@/lib/api/weather';
 import { Thermometer, Droplets, Wind, CloudRain, AlertTriangle } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const SELECT_CLASS =
   'flex h-9 rounded-md border border-input bg-transparent px-3 text-sm';
@@ -162,10 +163,10 @@ export default function WeatherPage() {
   }, [items]);
 
   const levelColor: Record<string, string> = {
-    red: 'border-red-500 bg-red-50 text-red-700',
-    orange: 'border-orange-500 bg-orange-50 text-orange-700',
-    yellow: 'border-yellow-500 bg-yellow-50 text-yellow-700',
-    blue: 'border-blue-500 bg-blue-50 text-blue-700',
+    red: 'border-red-500 bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-400',
+    orange: 'border-orange-500 bg-orange-50 dark:bg-orange-500/15 text-orange-700 dark:text-orange-400',
+    yellow: 'border-yellow-500 bg-yellow-50 dark:bg-yellow-500/15 text-yellow-700 dark:text-yellow-400',
+    blue: 'border-blue-500 bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400',
   };
 
   const noStation = !activeLocation;
@@ -210,9 +211,7 @@ export default function WeatherPage() {
       {noStation ? (
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">
-              暂无气象站点。数据由系统每日 17:00 自动采集；若无站点，说明采集任务尚未运行或未配置。
-            </p>
+            <EmptyState compact title="暂无气象站点。数据由系统每日 17:00 自动采集；若无站点，说明采集任务尚未运行或未配置。" />
           </CardContent>
         </Card>
       ) : (
@@ -277,16 +276,14 @@ export default function WeatherPage() {
             }
           >
             {trend.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {isLoading ? '加载中...' : '暂无观测数据，等待每日 17:00 自动采集'}
-              </p>
+              <EmptyState compact title={<>{isLoading ? '加载中...' : '暂无观测数据，等待每日 17:00 自动采集'}</>} />
             ) : metric === 'temp' ? (
               <ResponsiveContainer width="100%" height={280}>
                 <ComposedChart data={trend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} />
-                  <YAxis yAxisId="temp" tick={{ fontSize: 12, fill: '#6b7280' }} width={50} unit="℃" />
-                  <YAxis yAxisId="precip" orientation="right" tick={{ fontSize: 12, fill: '#6b7280' }} width={50} unit="mm" />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis yAxisId="temp" tick={{ fontSize: 12 }} width={50} unit="℃" />
+                  <YAxis yAxisId="precip" orientation="right" tick={{ fontSize: 12 }} width={50} unit="mm" />
                   <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number, n: string) => (n === '降水' ? `${v.toFixed(1)} mm` : `${v.toFixed(1)} ℃`)} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Area yAxisId="temp" type="monotone" dataKey="high" name="最高" stroke="#f97316" fill="#fed7aa" strokeWidth={2} isAnimationActive={false} />
@@ -297,10 +294,10 @@ export default function WeatherPage() {
             ) : metric === 'humidity' ? (
               <ResponsiveContainer width="100%" height={280}>
                 <ComposedChart data={trend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} />
-                  <YAxis yAxisId="humidity" tick={{ fontSize: 12, fill: '#6b7280' }} width={50} unit="%" />
-                  <YAxis yAxisId="precip" orientation="right" tick={{ fontSize: 12, fill: '#6b7280' }} width={50} unit="mm" />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis yAxisId="humidity" tick={{ fontSize: 12 }} width={50} unit="%" />
+                  <YAxis yAxisId="precip" orientation="right" tick={{ fontSize: 12 }} width={50} unit="mm" />
                   <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number, n: string) => (n === '降水' ? `${v.toFixed(1)} mm` : `${v.toFixed(0)}%`)} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Area yAxisId="humidity" type="monotone" dataKey="humidity" name="湿度" stroke="#06b6d4" fill="#cffafe" strokeWidth={2} isAnimationActive={false} />
@@ -310,10 +307,10 @@ export default function WeatherPage() {
             ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <ComposedChart data={trend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} />
-                  <YAxis yAxisId="wind" tick={{ fontSize: 12, fill: '#6b7280' }} width={50} unit="km/h" />
-                  <YAxis yAxisId="lf" orientation="right" tick={{ fontSize: 12, fill: '#6b7280' }} width={50} unit="%" />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis yAxisId="wind" tick={{ fontSize: 12 }} width={50} unit="km/h" />
+                  <YAxis yAxisId="lf" orientation="right" tick={{ fontSize: 12 }} width={50} unit="%" />
                   <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number, n: string) => (n === '负荷系数' ? `${v.toFixed(1)}%` : `${v.toFixed(1)} km/h`)} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Area yAxisId="wind" type="monotone" dataKey="wind" name="风速" stroke="#f97316" fill="#fed7aa" strokeWidth={2} isAnimationActive={false} />
@@ -346,7 +343,7 @@ export default function WeatherPage() {
                   <TableBody>
                     {isLoading && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center text-muted-foreground">加载中...</TableCell>
+                        <TableCell colSpan={8}><Skeleton className="h-5 w-full" /></TableCell>
                       </TableRow>
                     )}
                     {items.slice().reverse().map((i) => (
@@ -366,7 +363,7 @@ export default function WeatherPage() {
                     ))}
                     {items.length === 0 && !isLoading && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center text-muted-foreground">暂无观测数据</TableCell>
+                        <TableCell colSpan={8}><EmptyState compact title="暂无观测数据" /></TableCell>
                       </TableRow>
                     )}
                   </TableBody>

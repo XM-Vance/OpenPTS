@@ -313,13 +313,6 @@ export interface ReviewSimulatePayload {
 }
 
 // 工具方法
-export const slotTimeLabel = (slotIndex: number): string => {
-  const totalMinutes = (slotIndex + 1) * 15;
-  if (totalMinutes >= 24 * 60) return '24:00';
-  const hour = Math.floor(totalMinutes / 60);
-  const minute = totalMinutes % 60;
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-};
 
 export interface StationOperationPoint {
   time: string;
@@ -328,41 +321,6 @@ export interface StationOperationPoint {
   meter_power_mw: number;
   soc_percent: number;
 }
-
-export const STRATEGY_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'simple_peak_valley', label: '简单峰谷套利' },
-  { value: 'threshold_arbitrage', label: '价差阈值套利' },
-  { value: 'fm_priority', label: '调频优先' },
-  { value: 'hybrid_opt', label: '混合优化' },
-];
-
-export const VOLTAGE_LEVEL_OPTIONS: string[] = ['10', '20', '35', '110', '220'];
-
-export const simulateSoc = (
-  slots: EnergySlot[],
-  capacity: number,
-  chargeEfficiency: number,
-  dischargeEfficiency: number,
-  socInit: number,
-): number[] => {
-  const dt = 0.25;
-  const chargeEff = Math.max(chargeEfficiency, 1e-6);
-  const dischargeEff = Math.max(dischargeEfficiency, 1e-6);
-  const cap = Math.max(capacity, 1e-6);
-  let soc = socInit;
-  const result: number[] = [];
-  for (const s of slots) {
-    const power = s.power_mw || 0;
-    if (power > 0) {
-      soc -= (power * dt) / (cap * dischargeEff);
-    } else if (power < 0) {
-      soc += (Math.abs(power) * chargeEff * dt) / cap;
-    }
-    soc = Math.max(0, Math.min(1, soc));
-    result.push(Number(soc.toFixed(6)));
-  }
-  return result;
-};
 
 // ─── 以下自 v1clone-e.ts 迁入（2026-06，储能申报（简版列表）） ───
 // ─── E6 储能申报 ───

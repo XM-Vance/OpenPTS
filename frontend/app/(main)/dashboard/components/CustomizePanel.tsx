@@ -113,7 +113,7 @@ export default function CustomizePanel({ config, onChange }: Props) {
               <div
                 key={widget.id}
                 className={`flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors ${
-                  widget.visible ? 'bg-white' : 'bg-muted/30 opacity-60'
+                  widget.visible ? 'bg-card' : 'bg-muted/30 opacity-60'
                 }`}
               >
                 {/* 显示/隐藏开关 */}

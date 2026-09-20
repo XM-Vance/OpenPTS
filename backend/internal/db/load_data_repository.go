@@ -11,6 +11,9 @@
 package db
 
 import (
+	"errors"
+	"math"
+	"strings"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -314,4 +317,177 @@ func (r *LoadDataRepository) ExportMpMissing(
 		out = append(out, &it)
 	}
 	return out, rows.Err()
+}
+
+// ─── WP6.4：负荷数据校准 ───
+
+// LoadCalibration 校准台账行。
+type LoadCalibration struct {
+	ID          string     `json:"id"`
+	CustomerID  string     `json:"customer_id"`
+	CustomerName string    `json:"customer_name,omitempty"`
+	PeriodMonth string     `json:"period_month"`
+	MeterKWh    float64    `json:"meter_kwh"`
+	SystemKWh   float64    `json:"system_kwh"`
+	Coefficient float64    `json:"coefficient"`
+	Status      string     `json:"status"`
+	AppliedAt   *time.Time `json:"applied_at,omitempty"`
+	Note        *string    `json:"note,omitempty"`
+}
+
+// ComputeCalibration 计算某客户某月的表计侧 vs 系统侧电量与校准系数（不落库）。
+// 表计侧 = raw_meter_data 聚合（Σ曲线×倍率/4）；系统侧 = user_load_data.total_load 合计。
+// 任一侧无数据返回错误（不臆造）。
+func (r *LoadDataRepository) ComputeCalibration(ctx context.Context, customerID, month string) (*LoadCalibration, error) {
+	org, scoped := OrgFilter(ctx)
+	if !scoped {
+		return nil, ErrOrgRequired
+	}
+	// 表计侧（JSONB period_data 逐点×倍率/4）
+	var meterKWh *float64
+	q := `SELECT SUM((elem->>'value')::float8 * m.multiplier) / 4.0
+		FROM raw_meter_data m, jsonb_array_elements(m.period_data) AS elem
+		WHERE m.customer_id = $1::uuid AND to_char(m.date,'YYYY-MM') = $2
+		  AND m.org_id = $3::uuid`
+	if err := r.pool.QueryRow(ctx, q, customerID, month, org).Scan(&meterKWh); err != nil {
+		return nil, err
+	}
+	if meterKWh == nil {
+		return nil, errors.New("该月无表计数据（先 POST /import/meter 导入 raw_meter_data）")
+	}
+	// 系统侧
+	var sysKWh *float64
+	q2 := `SELECT SUM(total_load) FROM user_load_data
+		WHERE customer_id = $1::uuid AND to_char(date,'YYYY-MM') = $2
+		  AND quality_flag <> 'missing' AND org_id = $3::uuid`
+	if err := r.pool.QueryRow(ctx, q2, customerID, month, org).Scan(&sysKWh); err != nil {
+		return nil, err
+	}
+	if sysKWh == nil {
+		return nil, errors.New("该月无系统负荷数据（先导入表计并聚合，或检查导入日期范围）")
+	}
+	coef := 1.0
+	if *sysKWh > 0 {
+		coef = *meterKWh / *sysKWh
+	}
+	return &LoadCalibration{
+		CustomerID: customerID, PeriodMonth: month,
+		MeterKWh: mathRound(*meterKWh, 2), SystemKWh: mathRound(*sysKWh, 2),
+		Coefficient: mathRound(coef, 6), Status: "preview",
+	}, nil
+}
+
+// SaveCalibration 保存/更新校准行（同客户+月幂等；applied 终态拒绝覆盖）。
+func (r *LoadDataRepository) SaveCalibration(ctx context.Context, cal *LoadCalibration, note string) (*LoadCalibration, error) {
+	org, err := MustScoped(ctx)
+	if err != nil {
+		return nil, err
+	}
+	q := `INSERT INTO load_calibrations
+		(org_id, customer_id, period_month, meter_kwh, system_kwh, coefficient, status, note)
+		VALUES ($1::uuid,$2,$3,$4,$5,$6,'preview',$7)
+		ON CONFLICT (org_id, customer_id, period_month) DO UPDATE SET
+		  meter_kwh=EXCLUDED.meter_kwh, system_kwh=EXCLUDED.system_kwh,
+		  coefficient=EXCLUDED.coefficient, note=EXCLUDED.note,
+		  status=CASE WHEN load_calibrations.status='applied' THEN load_calibrations.status ELSE 'preview' END
+		RETURNING id::text, customer_id::text, period_month, meter_kwh, system_kwh,
+		  coefficient, status, applied_at, note`
+	var out LoadCalibration
+	err = r.pool.QueryRow(ctx, q, org, cal.CustomerID, cal.PeriodMonth,
+		cal.MeterKWh, cal.SystemKWh, cal.Coefficient, nullStr(note)).Scan(
+		&out.ID, &out.CustomerID, &out.PeriodMonth, &out.MeterKWh, &out.SystemKWh,
+		&out.Coefficient, &out.Status, &out.AppliedAt, &out.Note)
+	if err != nil {
+		return nil, err
+	}
+	if out.Status == "applied" {
+		return nil, errors.New("该月校准已应用（终态），如需重算请先作废")
+	}
+	return &out, nil
+}
+
+// ApplyCalibration 应用校准：按系数缩放该客户该月 user_load_data（curve×coef、total×coef）。
+// 幂等：重复应用按「原始值×系数」语义需要先 void 恢复——本实现直接记录 applied_at
+// 并在重复应用时返回错误。
+func (r *LoadDataRepository) ApplyCalibration(ctx context.Context, id, actor string) error {
+	q := `UPDATE load_calibrations SET status='applied', applied_at=now(), applied_by=$2::uuid
+		WHERE id=$1::uuid AND status='preview'
+		RETURNING customer_id::text, period_month, coefficient`
+	var custID, month string
+	var coef float64
+	if err := r.pool.QueryRow(ctx, q, id, nullStr(actor)).Scan(&custID, &month, &coef); err != nil {
+		return errors.New("校准单不存在或已应用")
+	}
+	// 缩放系统侧曲线
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE user_load_data SET
+		  curve_96 = (SELECT array_agg(e * $3::numeric ORDER BY ord)::numeric[] 
+		              FROM unnest(curve_96) WITH ORDINALITY AS t(e, ord)),
+		  total_load = total_load * $3::numeric,
+		  updated_at = now()
+		WHERE customer_id = $1::uuid AND to_char(date,'YYYY-MM') = $2`,
+		custID, month, coef)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("该月无系统负荷数据可校准")
+	}
+	return nil
+}
+
+// VoidCalibration 作废校准（preview/applied → void；不回滚已缩放的数据，
+// 提示用户重导入表计并重新聚合恢复）。
+func (r *LoadDataRepository) VoidCalibration(ctx context.Context, id string) error {
+	q := `UPDATE load_calibrations SET status='void' WHERE id=$1::uuid AND status IN ('preview','applied')`
+	tag, err := r.pool.Exec(ctx, q, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("校准单不存在或已作废")
+	}
+	return nil
+}
+
+// ListCalibrations 校准台账（月份过滤，org 过滤）。
+func (r *LoadDataRepository) ListCalibrations(ctx context.Context, month string, limit int) ([]*LoadCalibration, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	q := `SELECT lc.id::text, lc.customer_id::text, c.user_name, lc.period_month,
+		lc.meter_kwh, lc.system_kwh, lc.coefficient, lc.status, lc.applied_at, lc.note
+	  FROM load_calibrations lc JOIN customers c ON c.id = lc.customer_id`
+	where := []string{"TRUE"}
+	args := []any{}
+	if org, scoped := OrgFilter(ctx); scoped {
+		args = append(args, org)
+		where = append(where, fmt.Sprintf("lc.org_id = $%d::uuid", len(args)))
+	}
+	if month != "" {
+		args = append(args, month)
+		where = append(where, fmt.Sprintf("lc.period_month = $%d", len(args)))
+	}
+	args = append(args, limit)
+	q += " WHERE " + strings.Join(where, " AND ") + " ORDER BY lc.period_month DESC, c.user_name LIMIT $" + fmt.Sprint(len(args))
+	rows, err := r.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	list := make([]*LoadCalibration, 0, 16)
+	for rows.Next() {
+		var lc LoadCalibration
+		if err := rows.Scan(&lc.ID, &lc.CustomerID, &lc.CustomerName, &lc.PeriodMonth,
+			&lc.MeterKWh, &lc.SystemKWh, &lc.Coefficient, &lc.Status, &lc.AppliedAt, &lc.Note); err != nil {
+			return nil, err
+		}
+		list = append(list, &lc)
+	}
+	return list, rows.Err()
+}
+
+func mathRound(v float64, digits int) float64 {
+	p := math.Pow(10, float64(digits))
+	return math.Round(v*p) / p
 }

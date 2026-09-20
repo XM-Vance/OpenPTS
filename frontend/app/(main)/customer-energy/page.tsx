@@ -3,6 +3,7 @@
 // 客户历史电量档案：客户逐月电量（来源：文档解析「确认入库」→ 客户电量档案）。
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -12,11 +13,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ChartContainer } from '@/components/charts/chart-container';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { listCustomers } from '@/lib/api/customers';
 import { listCustomerEnergy } from '@/lib/api/customer-energy';
 import { Zap, Loader2 } from 'lucide-react';
+import { EmptyState } from '@/components/feedback';
+
+// recharts 体积较大，剥离出首屏：图表组件单独成文件并按需懒加载。
+const EnergyBarChart = dynamic(
+  () => import('./_charts').then((m) => ({ default: m.EnergyBarChart })),
+  { ssr: false },
+);
 
 const SELECT_CLASS = 'flex h-9 rounded-md border border-input bg-transparent px-3 text-sm';
 
@@ -75,19 +81,7 @@ export default function CustomerEnergyPage() {
       </Card>
 
       {/* 单客户电量趋势 */}
-      {customerId && chartData.length > 0 && (
-        <ChartContainer title="月度电量趋势">
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => fmtNum(v)} />
-              <Bar dataKey="energy" name="月度电量" fill="#6366f1" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartContainer>
-      )}
+      {customerId && chartData.length > 0 && <EnergyBarChart data={chartData} />}
 
       {/* 电量明细 */}
       <Card>
@@ -117,9 +111,7 @@ export default function CustomerEnergyPage() {
                 </TableRow>
               ) : (rows ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    暂无电量数据，请在文档解析中把市场化账单/月度电量「确认入库 → 客户电量档案」
-                  </TableCell>
+                  <TableCell colSpan={5}><EmptyState compact title="暂无电量数据，请在文档解析中把市场化账单/月度电量「确认入库 → 客户电量档案」" /></TableCell>
                 </TableRow>
               ) : (
                 (rows ?? []).map((r) => (

@@ -52,7 +52,7 @@ export async function changePassword(oldPassword: string, newPassword: string): 
   });
 }
 
-// ─── 用户 API Key（外部脚本/工具以本人身份连 OpenPTS）───
+// ─── 用户 API Key（MCP/外部脚本以本人身份连 ptis）───
 
 export interface ApiKey {
   id: string;

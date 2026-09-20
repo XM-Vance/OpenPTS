@@ -1,34 +1,11 @@
 import { apiClient } from './client';
+import type { SchemaCarbonQuote, SchemaCarbonProductSummary } from './types.gen';
 
 // 碳交易行情（CEA 全国碳配额 / CCER 国家核证自愿减排 / EUA 欧盟碳配额）。
 // 碳价为全国统一行情，不分省。
-
-export interface CarbonQuote {
-  id: number;
-  product: string;
-  trade_date: string;
-  open_price: number | null;
-  high_price: number | null;
-  low_price: number | null;
-  close_price: number | null;
-  volume: number | null;
-  turnover: number | null;
-  created_at: string;
-}
-
-export interface CarbonProductSummary {
-  product: string;
-  name: string;
-  unit: string;
-  latest_date: string | null;
-  close: number | null;
-  prev_close: number | null;
-  change: number | null;
-  change_pct: number | null;
-  volume: number | null;
-  high_52w: number | null;
-  low_52w: number | null;
-}
+// 实体类型由 OpenAPI 规范生成（与 customers.ts 同模式）。
+export type CarbonQuote = SchemaCarbonQuote;
+export type CarbonProductSummary = SchemaCarbonProductSummary;
 
 export const getCarbonSummary = () =>
   apiClient.get<{ items: CarbonProductSummary[] }>('/api/v1/carbon/summary');

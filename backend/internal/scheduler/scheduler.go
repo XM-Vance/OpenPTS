@@ -15,6 +15,10 @@ import (
 	"github.com/ptis/backend/internal/db"
 	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // JobFunc 一个调度任务的执行体。返回 error 写入 job_runs.error。
@@ -31,6 +35,7 @@ type Scheduler struct {
 	handlers  map[string]JobFunc
 	repo      *db.SchedulerRepository
 	pool      *db.Pool
+	onFailure func(jobName, errMsg string) // 任务失败告警通道（IM 推送，未配置为 nil）
 	mu        sync.Mutex
 	entryByID map[string]cron.EntryID // jobID → cron.EntryID
 	pub       EventPublisher
@@ -52,6 +57,11 @@ func New(repo *db.SchedulerRepository, pool *db.Pool) *Scheduler {
 
 // SetHolidaysRepo 注入节假日数据源，供 tradeDaySchedule 判断交易日（P0-D4）。
 func (s *Scheduler) SetHolidaysRepo(r *db.ForecastBaseRepository) { s.holidays = r }
+
+// SetFailureNotifier 注入任务失败告警通道（IM 机器人）。
+func (s *Scheduler) SetFailureNotifier(fn func(jobName, errMsg string)) {
+	s.onFailure = fn
+}
 
 // SetPublisher 注入事件发布器（main.go 在 New 后调用）。
 func (s *Scheduler) SetPublisher(p EventPublisher) { s.pub = p }
@@ -147,12 +157,19 @@ func (s *Scheduler) runOne(jobID, jobName string, fn JobFunc, trigger string, ma
 		return
 	}
 	start := time.Now()
+	// OTel span：让 scheduler job 在分布式追踪里可见（异步链路补齐，N10）。
+	// 与 HTTP 入口 span（otelgin）和 algo 出站 span（otelhttp）串联成完整请求链。
+	tracer := otel.Tracer("ptis-backend/scheduler")
+	spanCtx, span := tracer.Start(ctx, "scheduler.job."+jobName,
+		trace.WithAttributes(attribute.String("job.name", jobName), attribute.Int("job.max_retries", maxRetries)))
+	defer span.End()
+
 	// 执行 + 重试：首次 + maxRetries 次，指数退避
 	var jobErr error
 	attempts := maxRetries + 1
 	for i := 0; i < attempts; i++ {
-		jobErr = fn(ctx, s.pool)
-		if jobErr == nil || ctx.Err() != nil {
+		jobErr = fn(spanCtx, s.pool)
+		if jobErr == nil || spanCtx.Err() != nil {
 			break // 成功 或 上下文已取消（如停机），不再重试
 		}
 		if i < attempts-1 {
@@ -161,13 +178,20 @@ func (s *Scheduler) runOne(jobID, jobName string, fn JobFunc, trigger string, ma
 				Dur("backoff", backoff).Msg("任务失败，准备重试")
 			select {
 			case <-time.After(backoff):
-			case <-ctx.Done():
+			case <-spanCtx.Done():
 			}
-			if ctx.Err() != nil {
+			if spanCtx.Err() != nil {
 				break // 退避期间被取消，停止重试
 			}
 		}
 	}
+	// span 记录执行结果（成功/失败 + 耗时），便于 Tempo 里按 status 筛选
+	if jobErr != nil {
+		span.SetStatus(codes.Error, jobErr.Error())
+	} else {
+		span.SetAttributes(attribute.String("job.status", "success"))
+	}
+	span.SetAttributes(attribute.Int("job.duration_ms", int(time.Since(start)/time.Millisecond)))
 	dur := int(time.Since(start) / time.Millisecond)
 	status := "success"
 	var errStr *string
@@ -177,9 +201,15 @@ func (s *Scheduler) runOne(jobID, jobName string, fn JobFunc, trigger string, ma
 		errStr = &e
 		log.Error().Err(jobErr).Str("job", jobName).Int("ms", dur).
 			Int("attempts", attempts).Msg("任务执行失败（已耗尽重试")
+		if s.onFailure != nil { // 失败告警推送（采集断流等需即时可见）
+			go s.onFailure(jobName, e)
+		}
 	} else {
 		log.Info().Str("job", jobName).Int("ms", dur).Msg("任务执行成功")
 	}
+	// Prometheus 指标：让失败可见，Grafana 可对 failed rate 告警。
+	jobRunsTotal.WithLabelValues(jobName, status).Inc()
+	jobDurationSeconds.WithLabelValues(jobName).Observe(time.Since(start).Seconds())
 	if err := s.repo.FinishRun(ctx, runID, jobID, status, errStr, dur); err != nil {
 		log.Error().Err(err).Msg("写 job_runs 完成失败")
 	}

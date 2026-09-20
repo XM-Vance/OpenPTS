@@ -21,10 +21,6 @@ export async function listPreSettle(days = 14): Promise<{ items: PreSettleDaily[
   const { data } = await apiClient.get('/api/v1/settlement/pre', { params: { days } });
   return data;
 }
-export async function getPreSettle(date: string): Promise<PreSettleDaily> {
-  const { data } = await apiClient.get(`/api/v1/settlement/pre/${date}`);
-  return data;
-}
 export async function genPreSettleDemo() {
   const { data } = await apiClient.post('/api/v1/settlement/pre/demo-data');
   return data;

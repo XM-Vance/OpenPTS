@@ -39,6 +39,9 @@ func (h *RPAHandler) ListRuns(c *gin.Context) {
 
 func (h *RPAHandler) GenerateDemoData(c *gin.Context) {
 	n, err := h.repo.GenerateDemo(c.Request.Context())
+	if respondOrgRequired(c, err) {
+		return
+	}
 	if err != nil {
 		log.Error().Err(err).Msg("操作失败")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "操作失败，请稍后重试"})

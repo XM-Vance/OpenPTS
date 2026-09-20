@@ -93,7 +93,7 @@ type runSimulationReq struct {
 }
 
 // RunSimulation 运行模拟计算
-// 在实际项目中会调用 algo-service；此处使用本地模拟算法生成结果。
+// 本骨架使用本地模拟算法生成结果；二次开发可接入更精细的模型。
 func (h *DASimulationHandler) RunSimulation(c *gin.Context) {
 	id := c.Param("id")
 	scenario, err := h.repo.GetScenario(c.Request.Context(), id)

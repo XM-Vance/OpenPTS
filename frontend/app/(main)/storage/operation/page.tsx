@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/table';
 import { StatCard } from '@/components/data-display/stat-card';
 import { ChartContainer } from '@/components/charts/chart-container';
-import { DemoBadge } from '@/components/feedback';
+import { EmptyState, DemoBadge } from '@/components/feedback';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
 import {
@@ -27,6 +27,7 @@ import {
   listStorageStations,
 } from '@/lib/api/storage';
 import { Battery, TrendingUp, DollarSign, Zap } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const FIELD_CLASS =
   'flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm';
@@ -270,9 +271,7 @@ export default function StorageOperationPage() {
       ) : (
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">
-              暂无储能站点{canWrite ? '，请点右上「生成演示数据」' : ''}
-            </p>
+            <EmptyState compact title={<>暂无储能站点{canWrite ? '，请点右上「生成演示数据」' : ''}</>} />
           </CardContent>
         </Card>
       )}
@@ -323,9 +322,7 @@ export default function StorageOperationPage() {
                 <TableBody>
                   {opsLoading && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
-                        加载中...
-                      </TableCell>
+                      <TableCell colSpan={6}><Skeleton className="h-5 w-full" /></TableCell>
                     </TableRow>
                   )}
                   {opsItems.map((o) => (
@@ -344,9 +341,7 @@ export default function StorageOperationPage() {
                   ))}
                   {opsItems.length === 0 && !opsLoading && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
-                        该站点暂无运营数据
-                      </TableCell>
+                      <TableCell colSpan={6}><EmptyState compact title="该站点暂无运营数据" /></TableCell>
                     </TableRow>
                   )}
                 </TableBody>

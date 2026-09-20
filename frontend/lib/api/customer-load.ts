@@ -12,6 +12,7 @@ export interface CustomerLoadSummary {
   valley_load: number;
   peak_valley_ratio: number;
   cv: number;
+  is_intent?: boolean; // Phase 3b：意向客户（数据来自诊断聚合，无峰谷曲线）
 }
 export interface CustomerLoadCurve {
   customer_id: string;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Bar,
@@ -25,6 +25,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dropdown } from '@/components/ui/dropdown';
+import { MobileCardList, type MobileCardField, type MobileRow } from '@/components/data-display/mobile-card-list';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { RetailTabs } from '@/components/retail/retail-tabs';
 import { ChartContainer } from '@/components/charts/chart-container';
 import { usePermission } from '@/lib/auth/use-permission';
@@ -34,11 +37,16 @@ import {
   deletePackage,
   listPackages,
   listPricingModels,
+  settlePreview,
+  settleAndSave,
   updatePackage,
   type PricingModel,
   type RetailPackage,
 } from '@/lib/api/retail';
+import { listCustomers } from '@/lib/api/customers';
 import { PricingEditor, type PricingConfig } from '@/components/retail/pricing-editor';
+import { ChartLoading, EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const STATUS_LABEL: Record<string, string> = {
   active: '启用',
@@ -46,7 +54,9 @@ const STATUS_LABEL: Record<string, string> = {
   draft: '草稿',
 };
 
-// 分时电价模拟数据（基于套餐类型）
+const money = (v: number) => v.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
+
+// 分时电价模拟数据（基于套餐类型）——仅用于「套餐分时电价对比」图的粗略可视化。
 function getMockTOUPrices(type: string): { period: string; price: number }[] {
   const base: Record<string, number[]> = {
     '分时': [0.35, 0.65, 1.05],
@@ -67,12 +77,36 @@ export default function RetailPackagesPage() {
   const { has } = usePermission();
   const canWrite = has('retail_management:write');
   const canDelete = has('retail_management:delete');
+  const canSettle = has('settlement_management:write'); // 落库走结算模块写权限
 
   const [editing, setEditing] = useState<RetailPackage | 'new' | null>(null);
-
+  const isMobile = useIsMobile();
+  // 移动端套餐卡片字段 + actions（编辑主按钮，删除收「⋯」）
+  const pkgMobileFields: MobileCardField<MobileRow>[] = [
+    {
+      primary: true,
+      render: (p) => (
+        <span>
+          <span className="font-medium">{(p as any).package_name}</span>
+          <Badge variant={(p as any).status === 'active' ? 'default' : 'secondary'} className="ml-2">{STATUS_LABEL[(p as any).status] || (p as any).status}</Badge>
+        </span>
+      ),
+    },
+    { label: '类型', render: (p) => (p as any).package_type },
+    { label: '定价模型', render: (p) => (p as any).model_code || '-' },
+    { label: '绿电', render: (p) => ((p as any).is_green_power ? <Badge variant="success">绿电</Badge> : '-') },
+  ];
   // 收益模拟器状态
   const [simKwh, setSimKwh] = useState('10000');
   const [simPkg, setSimPkg] = useState('');
+  const [simMarketPrice, setSimMarketPrice] = useState(''); // 市场参考价（market_spread 模式用）
+  const [simWholesale, setSimWholesale] = useState(''); // 批发均价（填了才算收益）
+  const [simBenchmark, setSimBenchmark] = useState(''); // P基准 元/kWh（价差分享套餐 + 封顶价用）
+  const [simPurchase, setSimPurchase] = useState(''); // P购电均价 元/kWh（价差分享套餐用）
+  const [simCustomer, setSimCustomer] = useState(''); // 落库为测算时归属的客户
+  const [simMonth, setSimMonth] = useState(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   const { data: packages, isLoading } = useQuery({
     queryKey: ['retail-packages', ''],
@@ -118,27 +152,54 @@ export default function RetailPackagesPage() {
     [pkgList],
   );
 
-  // ── 收益模拟计算 ──
-  const simResult = useMemo(() => {
-    const kwh = Number(simKwh);
-    if (!kwh || kwh <= 0) return null;
+  // ── 收益试算（调 P0 结算引擎 /settlement/preview，按套餐真实定价计算）──
+  const simKwhNum = Number(simKwh);
+  const { data: simPreview, isFetching: simLoading, error: simError } = useQuery({
+    queryKey: ['settle-preview', simPkg, simKwh, simMarketPrice, simWholesale, simBenchmark, simPurchase],
+    queryFn: () =>
+      settlePreview({
+        package_id: simPkg,
+        energy_kwh: simKwhNum,
+        market_price: simMarketPrice ? Number(simMarketPrice) : undefined,
+        benchmark_price: simBenchmark ? Number(simBenchmark) : undefined,
+        purchase_avg_price: simPurchase ? Number(simPurchase) : undefined,
+        wholesale_avg_price: simWholesale ? Number(simWholesale) : undefined,
+      }),
+    enabled: !!simPkg && simKwhNum > 0,
+  });
 
-    const selectedPkg = simPkg ? pkgList.find((p) => p.id === simPkg) : null;
-    const pkgsToCalc = selectedPkg ? [selectedPkg] : pkgList.filter((p) => p.status === 'active').slice(0, 4);
+  const { data: custData } = useQuery({
+    queryKey: ['customers', 'sim-picker'],
+    queryFn: () => listCustomers({ limit: 200 }),
+  });
+  const custList = useMemo(() => custData?.items ?? [], [custData]);
 
-    return pkgsToCalc.map((p) => {
-      const tou = getMockTOUPrices(p.package_type);
-      // 简化计算：谷30%，平40%，峰30%
-      const avgPrice = tou[0].price * 0.3 + tou[1].price * 0.4 + tou[2].price * 0.3;
-      const totalCost = avgPrice * kwh;
-      return {
-        name: p.package_name,
-        avgPrice: avgPrice.toFixed(4),
-        totalCost: totalCost.toFixed(2),
-        type: p.package_type,
-      };
-    });
-  }, [simKwh, simPkg, pkgList]);
+  // 把当前试算结果存为该客户该月的「测算」（is_estimate=true）。
+  const canSaveEstimate = !!simPkg && !!simCustomer && !!simMonth && !!simWholesale && !!simPreview?.profit;
+  const onSaveEstimate = async () => {
+    if (!canSaveEstimate) return;
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const res = await settleAndSave({
+        package_id: simPkg,
+        customer_id: simCustomer,
+        operating_month: simMonth,
+        energy_kwh: simKwhNum,
+        market_price: simMarketPrice ? Number(simMarketPrice) : undefined,
+        benchmark_price: simBenchmark ? Number(simBenchmark) : undefined,
+        purchase_avg_price: simPurchase ? Number(simPurchase) : undefined,
+        wholesale_avg_price: simWholesale ? Number(simWholesale) : undefined,
+        is_estimate: true,
+      });
+      setSaveMsg(res.message || '已保存为测算');
+      qc.invalidateQueries({ queryKey: ['customer-profit'] });
+    } catch (e) {
+      setSaveMsg('保存失败：' + extractErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -157,9 +218,9 @@ export default function RetailPackagesPage() {
         {comparisonData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={comparisonData} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="period" tick={{ fontSize: 12, fill: '#374151' }} />
-              <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={50} unit="元" />
+              <YAxis tick={{ fontSize: 12 }} width={50} unit="元" />
               <RechartsTooltip
                 formatter={(v: number) => [`${v.toFixed(4)} 元/kWh`]}
                 contentStyle={{ fontSize: 12 }}
@@ -174,59 +235,164 @@ export default function RetailPackagesPage() {
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            暂无启用的套餐数据
-          </div>
+          <EmptyState compact className="h-full" title="暂无启用的套餐数据" />
         )}
       </ChartContainer>
 
       {/* ── 套餐收益模拟器 ── */}
       <ChartContainer title="套餐收益模拟器" minHeight={200}>
         <div className="space-y-4">
-          <div className="flex items-end gap-4">
+          <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-1">
               <Label className="text-sm">月用电量 (kWh)</Label>
-              <Input
-                type="number"
-                value={simKwh}
-                onChange={(e) => setSimKwh(e.target.value)}
-                className="w-40"
-                placeholder="如 10000"
-              />
+              <Input type="number" value={simKwh} onChange={(e) => setSimKwh(e.target.value)} className="w-36" placeholder="如 10000" />
             </div>
             <div className="space-y-1">
-              <Label className="text-sm">选择套餐（可选）</Label>
+              <Label className="text-sm">选择套餐</Label>
               <select
                 value={simPkg}
                 onChange={(e) => setSimPkg(e.target.value)}
                 className="h-9 rounded-md border border-input bg-background px-3 text-sm"
               >
-                <option value="">全部活跃套餐</option>
+                <option value="">— 选择套餐试算 —</option>
                 {pkgList.filter((p) => p.status === 'active').map((p) => (
                   <option key={p.id} value={p.id}>{p.package_name}</option>
                 ))}
               </select>
             </div>
+            <div className="space-y-1">
+              <Label className="text-sm">市场参考价 (元/kWh)</Label>
+              <Input type="number" value={simMarketPrice} onChange={(e) => setSimMarketPrice(e.target.value)} className="w-36" placeholder="价差模式用" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">批发均价 (元/kWh)</Label>
+              <Input type="number" value={simWholesale} onChange={(e) => setSimWholesale(e.target.value)} className="w-36" placeholder="填了算收益" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">P基准 (元/kWh)</Label>
+              <Input type="number" step="0.001" value={simBenchmark} onChange={(e) => setSimBenchmark(e.target.value)} className="w-36" placeholder="封顶/价差分享" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">P购电均价 (元/kWh)</Label>
+              <Input type="number" step="0.001" value={simPurchase} onChange={(e) => setSimPurchase(e.target.value)} className="w-36" placeholder="价差分享用" />
+            </div>
           </div>
 
-          {simResult && simResult.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {simResult.map((r) => (
-                <div key={r.name} className="rounded-lg border p-3 space-y-1">
-                  <p className="text-sm font-medium truncate">{r.name}</p>
-                  <p className="text-xs text-muted-foreground">类型：{r.type}</p>
-                  <p className="text-xs text-muted-foreground">加权均价：{r.avgPrice} 元/kWh</p>
-                  <p className="text-lg font-bold text-blue-600">¥ {Number(r.totalCost).toLocaleString()}</p>
-                  <p className="text-[10px] text-muted-foreground">预估月电费（谷30% 平40% 峰30%）</p>
+          {!simPkg || simKwhNum <= 0 ? (
+            <p className="text-sm text-muted-foreground">选择具体套餐并填月用电量，按真实定价规则试算零售 / 批发 / 收益。</p>
+          ) : simLoading ? (
+            <p className="text-sm text-muted-foreground">试算中…</p>
+          ) : simError ? (
+            <p className="text-sm text-destructive">试算失败：{extractErrorMessage(simError)}</p>
+          ) : simPreview ? (
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <SimStat
+                  label="综合单价 (元/kWh)"
+                  value={simPreview.retail.avg_unit_price.toFixed(4)}
+                  suffix={simPreview.retail.is_capped ? (
+                    <Badge variant="warning" className="ml-1 text-xs">已封顶 {simPreview.retail.capped_unit_price?.toFixed(4)}</Badge>
+                  ) : null}
+                />
+                <SimStat label="电费 (元)" value={money(simPreview.retail.energy_amount)} />
+                <SimStat label="服务费 (元)" value={money(simPreview.retail.service_amount)} />
+                <SimStat label="零售总额 (元)" value={money(simPreview.retail.total_amount)} accent />
+              </div>
+              {simPreview.profit && simPreview.wholesale && (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <SimStat label="批发成本 (元)" value={money(simPreview.wholesale.total_cost)} />
+                  <SimStat label="购电均价 (元/kWh)" value={simPreview.wholesale.avg_price.toFixed(4)} />
+                  <SimStat label="收益 / 毛利 (元)" value={money(simPreview.profit.gross_profit)} accent />
+                  <SimStat label="毛利率" value={`${simPreview.profit.gross_margin.toFixed(2)}%`} />
                 </div>
-              ))}
+              )}
+              {simPreview.retail.breakdown?.length > 0 && (
+                <div className="rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>分项</TableHead>
+                        <TableHead className="text-right">电量 (kWh)</TableHead>
+                        <TableHead className="text-right">单价 (元/kWh)</TableHead>
+                        <TableHead className="text-right">金额 (元)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {simPreview.retail.breakdown.map((b, i) => (
+                        <TableRow key={i}>
+                          <TableCell>{b.label}</TableCell>
+                          <TableCell className="text-right">{money(b.energy_kwh)}</TableCell>
+                          <TableCell className="text-right">{b.unit_price.toFixed(4)}</TableCell>
+                          <TableCell className="text-right">{money(b.amount)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground">
+                由 P0 结算引擎按套餐 pricing_config 实算（decimal 精确）。分时套餐需按峰平谷电量试算，此处仅按总量。
+              </p>
+
+              {/* 落库为某客户该月的「测算」（需填批发均价才有收益可存） */}
+              {canSettle && (
+                <div className="flex flex-wrap items-end gap-3 border-t pt-3">
+                  <div className="space-y-1">
+                    <Label className="text-sm">归属客户</Label>
+                    <select
+                      value={simCustomer}
+                      onChange={(e) => setSimCustomer(e.target.value)}
+                      className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">— 选择客户 —</option>
+                      {custList.map((cst) => (
+                        <option key={cst.id} value={cst.id}>{cst.user_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-sm">结算月份</Label>
+                    <Input type="month" value={simMonth} onChange={(e) => setSimMonth(e.target.value)} className="w-40" />
+                  </div>
+                  <Button onClick={onSaveEstimate} disabled={!canSaveEstimate || saving}>
+                    {saving ? '保存中…' : '保存为测算'}
+                  </Button>
+                  {!simPreview.profit && (
+                    <span className="text-xs text-muted-foreground">填「批发均价」后可存为测算（需含收益）</span>
+                  )}
+                  {saveMsg && <span className="text-xs text-emerald-700">{saveMsg}</span>}
+                </div>
+              )}
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">请输入用电量查看模拟结果</p>
-          )}
+          ) : null}
         </div>
       </ChartContainer>
 
+      {isMobile ? (
+        isLoading ? (
+          <ChartLoading className="py-8" />
+        ) : (packages?.length ?? 0) === 0 ? (
+          <EmptyState compact className="py-8" title="暂无数据" />
+        ) : (
+          <MobileCardList
+            items={(packages ?? []) as unknown as MobileRow[]}
+            itemKey={(p) => String((p as any).id)}
+            fields={pkgMobileFields}
+            actions={(p) => (
+              <>
+                {canWrite && (
+                  <Button size="sm" variant="ghost" onClick={() => setEditing(p as any)}>编辑</Button>
+                )}
+                {canDelete && (
+                  <Dropdown
+                    items={[{ label: '删除', danger: true, onClick: () => onDelete((p as any).id, (p as any).package_name) }]}
+                  />
+                )}
+              </>
+            )}
+          />
+        )
+      ) : (
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -242,9 +408,7 @@ export default function RetailPackagesPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={6}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {packages?.map((p) => (
@@ -282,14 +446,13 @@ export default function RetailPackagesPage() {
             ))}
             {packages?.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  暂无数据
-                </TableCell>
+                <TableCell colSpan={6}><EmptyState compact title="暂无数据" /></TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
+      )}
 
       {editing && (
         <PackageFormDialog
@@ -363,7 +526,7 @@ function PackageFormDialog({
   };
 
   return (
-    <Dialog open onClose={onClose}>
+    <Dialog open onClose={onClose} fullScreenOnMobile>
       <DialogHeader>
         <DialogTitle>{isNew ? '新建套餐' : '编辑套餐'}</DialogTitle>
       </DialogHeader>
@@ -457,5 +620,28 @@ function PackageFormDialog({
         </Button>
       </DialogFooter>
     </Dialog>
+  );
+}
+
+// SimStat 试算结果小卡片。accent 用于突出总额/收益；suffix 附在值后（如封顶标记）。
+function SimStat({
+  label,
+  value,
+  accent,
+  suffix,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+  suffix?: ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border p-3 space-y-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={accent ? 'text-lg font-bold text-blue-600' : 'text-base font-semibold'}>
+        {value}
+        {suffix}
+      </p>
+    </div>
   );
 }

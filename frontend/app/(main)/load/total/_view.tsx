@@ -18,13 +18,14 @@ import {
 } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { DemoBadge } from '@/components/feedback';
+import { EmptyState, DemoBadge } from '@/components/feedback';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { StatCard } from '@/components/data-display/stat-card';
 import { PageHeader } from '@/components/data-display/page-header';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
 import { genTotalLoadDemo, listTotalLoad, type TotalLoadDaily } from '@/lib/api/total-load';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Zap,
   TrendingUp,
@@ -213,6 +214,9 @@ export default function TotalLoadPage() {
         <CardHeader>
           <CardTitle className="text-base">
             96 点曲线 · {selected ? selected.data_date.slice(0, 10) : '演示数据'}
+            {!selected && (
+              <DemoBadge className="ml-1" tooltip="当前展示演示曲线（非真实采集数据），点「生成演示数据」可入库" />
+            )}
           </CardTitle>
           <CardDescription className="text-xs">
             时段着色：尖峰(红)、高峰(黄)、平段(蓝)、低谷/深谷(绿)
@@ -220,9 +224,7 @@ export default function TotalLoadPage() {
         </CardHeader>
         <CardContent>
           {curveData.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {canWrite ? '请点右上「生成演示数据」' : '暂无数据'}
-            </p>
+            <EmptyState compact title={<>{canWrite ? '请点右上「生成演示数据」' : '暂无数据'}</>} />
           ) : (
             <div
               className="relative [&_.recharts-surface:focus]:outline-none"
@@ -253,9 +255,9 @@ export default function TotalLoadPage() {
               </div>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={curveData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="period" tick={{ fontSize: 10, fill: '#6b7280' }} interval={11} />
-                  <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={60} unit=" MW" />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="period" tick={{ fontSize: 10 }} interval={11} />
+                  <YAxis tick={{ fontSize: 12 }} width={60} unit=" MW" />
                   <Tooltip
                     formatter={(v: number) => `${fmt(v)} MW`}
                     contentStyle={{ fontSize: 12 }}
@@ -287,7 +289,7 @@ export default function TotalLoadPage() {
         </CardHeader>
         <CardContent>
           {comparisonData.length === 0 ? (
-            <p className="text-sm text-muted-foreground">暂无数据</p>
+            <EmptyState compact title="暂无数据" />
           ) : (
             <div
               className="[&_.recharts-surface:focus]:outline-none"
@@ -295,9 +297,9 @@ export default function TotalLoadPage() {
             >
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={comparisonData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="period" tick={{ fontSize: 10, fill: '#6b7280' }} interval={11} />
-                  <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={60} unit=" MW" />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="period" tick={{ fontSize: 10 }} interval={11} />
+                  <YAxis tick={{ fontSize: 12 }} width={60} unit=" MW" />
                   <Tooltip
                     contentStyle={{ fontSize: 12 }}
                     formatter={(v: number) => `${fmt(v)} MW`}
@@ -335,7 +337,7 @@ export default function TotalLoadPage() {
         </CardHeader>
         <CardContent>
           {trendData.length === 0 ? (
-            <p className="text-sm text-muted-foreground">暂无数据</p>
+            <EmptyState compact title="暂无数据" />
           ) : (
             <div
               className="[&_.recharts-surface:focus]:outline-none"
@@ -343,9 +345,9 @@ export default function TotalLoadPage() {
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={trendData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6b7280' }} />
-                  <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={60} />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 12 }} width={60} />
                   <Tooltip contentStyle={{ fontSize: 12 }} />
                   <Bar dataKey="peak" name="峰" fill="#f59e0b" isAnimationActive={false} />
                   <Bar dataKey="avg" name="均" fill="#3b82f6" isAnimationActive={false} />
@@ -357,7 +359,7 @@ export default function TotalLoadPage() {
         </CardContent>
       </Card>
 
-      {isLoading && <p className="text-sm text-muted-foreground">加载中...</p>}
+      {isLoading && <Skeleton className="h-5 w-full" />}
     </div>
   );
 }

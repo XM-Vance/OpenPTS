@@ -2,6 +2,46 @@
 
 本项目的关键变更记录。版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.1] — 2026-09-20
+
+从生产分支增量同步：全站 UI 改造 + 4 项通用业务 + 安全加固。剥离算法真实化系列（WP2-WP5）、省份结算引擎（闽/赣/皖/苏）、钉钉、MCP。
+
+### ✨ 新增
+
+- **🎨 全站 UI 改造**：数据蓝品牌色体系、暗色模式全站适配（徽章/斑马纹对比度）、图表调色板（palette.ts）、骨架屏加载（Skeleton/ChartLoading）、空态组件化（EmptyState）、数值右对齐、ChartContainer 图表白屏修复。
+- **计量数据底座**：`raw_meter_data` 表计数据导入通道（严格限流）+ 多表计聚合任务（`aggregate_meter_load` 定时任务）。
+- **负荷校准台账**：表计 vs 系统口径系数（预览保存/列表/应用/作废 4 端点）。
+- **合同文档生成恢复**：自包含 HTML 打印即 PDF（替代 gofpdf 归档依赖）。
+- **意向客户转正式**：前端操作接线（前后端闭环）。
+- **全局搜索**：顶栏搜索真正可用（客户/合同/文档三域）。
+
+### 🔒 安全加固
+
+- JWT_SECRET 占位值识别扩展 + 生产环境长度校验（≥32 字符，RFC 8729）。
+- RPA 多租户隔离（rpa_jobs/rpa_runs 补 org_id + 唯一键，迁移 0120）。
+- scheduler exec 加固 + 任务运行指标（`ptis_scheduler_job_runs_total`）。
+
+### 🧹 清理
+
+- 删除 10 个无引用的死 api 模块（auth-management/customer-analysis/retail-contracts 等）。
+- OpenAPI 契约同步扩展并剥离 19 个引擎端点（batches/jx/ah/calculate 等仅存在于完整版）。
+
+### 迁移（0120-0123）
+
+| 号 | 内容 |
+|---|---|
+| 0120 | rpa_org（RPA 多租户隔离） |
+| 0121-0122 | meter_import + meter_aggregate_job（计量底座） |
+| 0123 | load_calibration（负荷校准台账） |
+
+### ⚠️ 不含（开源边界）
+
+- 算法真实化系列（LEAR 电价预测/负荷预测 ML/撮合引擎/策略回测/储能 LP/调频清算/VPP 聚合/碳持仓/绿电闭环）
+- 省份结算引擎（江苏/赣/皖/闽）与结算批次状态机
+- 钉钉（含审批告警双通道）、MCP 算法工具
+
+---
+
 ## [0.2.0] — 2026-07-19
 
 从生产分支同步通用改进 + 新增 3 个零耦合模块，剥离省份结算引擎与算法服务。
@@ -59,3 +99,4 @@
 
 [0.2.0]: https://github.com/XM-Vance/OpenPTS/releases/tag/v0.2.0
 [0.1.0]: https://github.com/XM-Vance/OpenPTS/releases/tag/v0.1.0
+[0.2.1]: https://github.com/XM-Vance/OpenPTS/releases/tag/v0.2.1

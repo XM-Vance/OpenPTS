@@ -1,21 +1,9 @@
 import { apiClient } from './client';
+import type { SchemaDashboardSummary, SchemaDailySeriesPoint } from './types.gen';
 
-export interface DashboardSummary {
-  customer_count: number;
-  active_contracts: number;
-  active_packages: number;
-  pending_alerts: number;
-  critical_alerts: number;
-  active_stations: number;
-  storage_30d_revenue: number;
-  freq_7d_revenue: number;
-  latest_settlement_fee?: number | null;
-}
-
-export interface DailySeriesPoint {
-  date: string;
-  value: number;
-}
+// 实体类型由 OpenAPI 规范生成（与 customers.ts 同模式）。
+export type DashboardSummary = SchemaDashboardSummary;
+export type DailySeriesPoint = SchemaDailySeriesPoint;
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   const { data } = await apiClient.get('/api/v1/dashboard/summary');

@@ -24,11 +24,6 @@ export async function listApprovals(
   return data;
 }
 
-export async function getApproval(id: string): Promise<ApprovalRequest> {
-  const { data } = await apiClient.get(`/api/v1/approvals/${id}`);
-  return data;
-}
-
 export interface ApprovalTemplate {
   id: string;
   name: string;

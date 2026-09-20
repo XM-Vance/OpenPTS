@@ -15,6 +15,8 @@ func registerLoad(g *gin.RouterGroup, d *Deps) {
 	loadCharH := handler.NewLoadCharacteristicsHandler(d.LoadCharRepo)
 	loadCharExtH := handler.NewLoadCharExtHandler(d.LoadCharExtRepo)
 	loadDataH := handler.NewLoadDataHandler(d.LoadDataRepo)
+	loadCalibH := handler.NewLoadCalibrationHandler(d.LoadDataRepo)
+	meterImportH := handler.NewMeterImportHandler(d.MeterRepo, d.CustomerRepo)
 	totalLoadH := handler.NewTotalLoadHandler(d.TotalLoadRepo)
 	mediumH := handler.NewMediumForecastHandler(d.MediumForecastRepo)
 	forecastBaseH := handler.NewForecastBaseHandler(d.ForecastBaseRepo)
@@ -82,4 +84,14 @@ func registerLoad(g *gin.RouterGroup, d *Deps) {
 	g.GET("/load-data/customers/:id/calendar", reqLMRead, loadDataH.CustomerCalendar)
 	g.GET("/load-data/customers/:id/curves", reqLMRead, loadDataH.CustomerCurves)
 	g.GET("/load-data/export/mp-missing", reqLMRead, loadDataH.ExportMpMissing)
+
+	// 计量数据底座：表计导入 + 多表计聚合（导入走严格限流防滥用）。
+	g.POST("/import/meter", reqLMWrite, middleware.StrictRateLimit(0.033, 2), meterImportH.Import)
+	g.POST("/load/aggregate-meter", reqLMWrite, meterImportH.Aggregate)
+
+	// 负荷校准：表计 vs 系统口径系数台账（预览保存/列表/应用/作废）。
+	g.POST("/load-data/calibrations", reqLMWrite, loadCalibH.PreviewAndSave)
+	g.GET("/load-data/calibrations", reqLMRead, loadCalibH.List)
+	g.POST("/load-data/calibrations/:id/apply", reqLMWrite, loadCalibH.Apply)
+	g.POST("/load-data/calibrations/:id/void", reqLMWrite, loadCalibH.Void)
 }

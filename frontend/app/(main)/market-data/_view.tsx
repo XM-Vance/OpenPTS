@@ -34,6 +34,7 @@ import {
   type MarketDataTableInfo,
 } from '@/lib/api/market-data';
 import {
+
   TrendingUp,
   Fuel,
   Landmark,
@@ -41,6 +42,7 @@ import {
   Activity,
   ArrowUpDown,
 } from 'lucide-react';
+import { ChartLoading } from '@/components/feedback';
 
 /* ── 分类配置 ── */
 const CATEGORY_META: Record<
@@ -50,9 +52,9 @@ const CATEGORY_META: Record<
   macro: { label: '宏观经济', icon: Landmark, color: 'text-blue-600' },
   fuel: { label: '能源燃料', icon: Fuel, color: 'text-orange-500' },
   futures: { label: '商品期货', icon: BarChart3, color: 'text-purple-600' },
-  rate: { label: '利率', icon: Activity, color: 'text-green-600' },
+  rate: { label: '利率', icon: Activity, color: 'text-green-700' },
   fx: { label: '汇率', icon: ArrowUpDown, color: 'text-cyan-600' },
-  bond: { label: '债券', icon: Landmark, color: 'text-yellow-600' },
+  bond: { label: '债券', icon: Landmark, color: 'text-yellow-700' },
   index: { label: '指数', icon: TrendingUp, color: 'text-pink-600' },
 };
 
@@ -421,7 +423,7 @@ export default function MarketDataPage() {
           }}
           className={`rounded-lg border p-3 text-center transition-colors ${
             !selectedCategory
-              ? 'border-blue-400 bg-blue-50 shadow-sm'
+              ? 'border-blue-400 bg-blue-50 dark:bg-blue-500/15 shadow-sm'
               : 'border-border hover:bg-muted/50'
           }`}
         >
@@ -442,7 +444,7 @@ export default function MarketDataPage() {
               }}
               className={`rounded-lg border p-3 text-center transition-colors ${
                 active
-                  ? 'border-blue-400 bg-blue-50 shadow-sm'
+                  ? 'border-blue-400 bg-blue-50 dark:bg-blue-500/15 shadow-sm'
                   : 'border-border hover:bg-muted/50'
               }`}
             >
@@ -478,7 +480,7 @@ export default function MarketDataPage() {
                   onClick={() => setSelectedTable(active ? null : t.table_name)}
                   className={`flex flex-col items-start rounded-lg border p-3 text-left transition-colors ${
                     active
-                      ? 'border-blue-400 bg-blue-50'
+                      ? 'border-blue-400 bg-blue-50 dark:bg-blue-500/15'
                       : 'border-border hover:bg-muted/50'
                   }`}
                 >
@@ -529,7 +531,7 @@ export default function MarketDataPage() {
                   onClick={() => setDays(opt.value)}
                   className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
                     days === opt.value
-                      ? 'bg-blue-100 text-blue-700'
+                      ? 'bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400'
                       : 'text-muted-foreground hover:bg-muted'
                   }`}
                 >
@@ -540,9 +542,7 @@ export default function MarketDataPage() {
           </div>
 
           {queryLoading ? (
-            <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-              加载中…
-            </div>
+            <ChartLoading className="h-40" />
           ) : (
             <>
               {/* 图表 */}
@@ -642,7 +642,10 @@ export default function MarketDataPage() {
                           {queryResult.data.slice(0, 100).map((row, i) => (
                             <TableRow key={i}>
                               {tableColumns.map((col) => (
-                                <TableCell key={col.key} className="whitespace-nowrap text-xs">
+                                <TableCell
+                                  key={col.key}
+                                  className={`whitespace-nowrap text-xs${typeof row[col.key] === 'number' ? ' text-right' : ''}`}
+                                >
                                   {col.fmt(row[col.key])}
                                 </TableCell>
                               ))}

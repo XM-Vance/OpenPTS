@@ -27,10 +27,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ChartContainer } from '@/components/charts/chart-container';
-import { DemoBadge } from '@/components/feedback';
+import { EmptyState, DemoBadge } from '@/components/feedback';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
 import { genGridAgencyDemo, listGridAgency } from '@/lib/api/grid-agency';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const SELECT_CLASS =
   'flex h-9 rounded-md border border-input bg-transparent px-3 text-sm';
@@ -133,15 +134,13 @@ export default function GridAgencyPage() {
       {/* 代理购电价 vs 现货价对比双线图 */}
       <ChartContainer title="代理购电价 vs 现货价对比" actions={<DemoBadge tooltip="现货价含随机系数生成，非真实现货数据" />}>
         {compareData.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            暂无数据{canWrite && '，可点右上「生成演示数据」'}
-          </p>
+          <EmptyState compact title={<>暂无数据{canWrite && '，可点右上「生成演示数据」'}</>} />
         ) : (
           <ResponsiveContainer width="100%" height={280}>
             <LineChart data={compareData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#6b7280' }} />
-              <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={60} />
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 12 }} width={60} />
               <Tooltip
                 formatter={(v: number) => `${fmt(v)} 元/MWh`}
                 contentStyle={{ fontSize: 12 }}
@@ -174,13 +173,13 @@ export default function GridAgencyPage() {
       {/* 价格构成拆解柱状图 */}
       <ChartContainer title="价格构成拆解（元/MWh）">
         {breakdownData.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无数据</p>
+          <EmptyState compact title="暂无数据" />
         ) : (
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={breakdownData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#6b7280' }} />
-              <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={60} />
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 12 }} width={60} />
               <Tooltip
                 formatter={(v: number) => `${fmt(v)} 元/MWh`}
                 contentStyle={{ fontSize: 12 }}
@@ -198,13 +197,13 @@ export default function GridAgencyPage() {
       {/* 历年变化趋势图 */}
       <ChartContainer title="历年变化趋势（峰 / 平 / 谷）">
         {trend.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无数据</p>
+          <EmptyState compact title="暂无数据" />
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={trend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#6b7280' }} />
-              <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={60} />
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 12 }} width={60} />
               <Tooltip
                 formatter={(v: number) => `${fmt(v)} 元/MWh`}
                 contentStyle={{ fontSize: 12 }}
@@ -267,9 +266,7 @@ export default function GridAgencyPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={6}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {items.map((g) => (
@@ -277,18 +274,16 @@ export default function GridAgencyPage() {
                 <TableCell className="font-medium">{g.operating_month}</TableCell>
                 <TableCell>{g.voltage_level}</TableCell>
                 <TableCell className="text-right">{fmt(g.avg_price)}</TableCell>
-                <TableCell className="text-right text-amber-600">{fmt(g.peak_price)}</TableCell>
+                <TableCell className="text-right text-amber-700">{fmt(g.peak_price)}</TableCell>
                 <TableCell className="text-right">{fmt(g.flat_price)}</TableCell>
-                <TableCell className="text-right text-emerald-600">
+                <TableCell className="text-right text-emerald-700">
                   {fmt(g.valley_price)}
                 </TableCell>
               </TableRow>
             ))}
             {items.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  暂无代理价数据
-                </TableCell>
+                <TableCell colSpan={6}><EmptyState compact title="暂无代理价数据" /></TableCell>
               </TableRow>
             )}
           </TableBody>

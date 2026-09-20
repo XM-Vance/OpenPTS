@@ -117,6 +117,7 @@ func main() {
 	loadCharRepo := db.NewLoadCharacteristicsRepository(pool)
 	loadCharExtRepo := db.NewLoadCharacteristicsExtRepository(pool)
 	loadDataRepo := db.NewLoadDataRepository(pool)
+	meterRepo := db.NewMeterRepository(pool) // 计量数据底座
 	priceTrendRepo := db.NewPriceTrendRepository(pool)
 	custAnalysisRepo := db.NewCustomerAnalysisRepository(pool)
 	tradeStrategyRepo := db.NewTradeStrategyRepository(pool)
@@ -189,6 +190,7 @@ func main() {
 	sched.Register("fetch_market_data", scheduler.FetchMarketData)
 	sched.Register("fetch_weather_data", scheduler.FetchWeatherData)
 	sched.Register("fetch_weather_actuals", scheduler.FetchWeatherActuals)
+	sched.Register("aggregate_meter_load", scheduler.AggregateMeterLoad) // 表计负荷聚合
 	if err := sched.Start(ctx); err != nil {
 		log.Fatal().Err(err).Msg("启动调度器失败")
 	}
@@ -255,6 +257,7 @@ func main() {
 		LoadCharRepo:         loadCharRepo,
 		LoadCharExtRepo:      loadCharExtRepo,
 		LoadDataRepo:         loadDataRepo,
+		MeterRepo:            meterRepo,
 		PriceTrendRepo:       priceTrendRepo,
 		CustAnalysisRepo:     custAnalysisRepo,
 		TradeStrategyRepo:    tradeStrategyRepo,

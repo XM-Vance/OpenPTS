@@ -10,8 +10,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { MobileCardList, type MobileCardField } from '@/components/data-display/mobile-card-list';
 
 // ───── 泛型行类型 ─────
 export type DataRow = Record<string, any>;
@@ -59,6 +62,12 @@ export interface DataTableProps<T extends DataRow = DataRow> {
   className?: string;
   /** 加载中 */
   loading?: boolean;
+  /**
+   * 移动端卡片字段配置。传入后，窄屏（<768px）渲染为卡片列表替代宽表；
+   * 桌面端忽略本字段、仍渲染表格。字段可复用 columns 的 render（推荐直接引用列定义）。
+   * 不传则移动端回退到表格横向滚动（table.tsx 自带 overflow-auto）。
+   */
+  mobileCardFields?: MobileCardField<T>[];
 }
 
 type SortDir = 'asc' | 'desc' | null;
@@ -82,7 +91,9 @@ export function DataTable<T extends DataRow = DataRow>({
   onRowClick,
   className,
   loading = false,
+  mobileCardFields,
 }: DataTableProps<T>) {
+  const isMobile = useIsMobile();
   // ──── 排序状态 ────
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
@@ -152,16 +163,41 @@ export function DataTable<T extends DataRow = DataRow>({
   };
 
   if (loading) {
+    // 骨架屏占位：行数固定 6 行，列数最多取 6 列，避免窄屏溢出
+    const skeletonCols = Math.min(
+      columns.length + (showIndex ? 1 : 0) + (selectable ? 1 : 0),
+      6,
+    );
     return (
-      <div className={cn('flex items-center justify-center py-12 text-muted-foreground', className)}>
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        <span className="ml-2">加载中...</span>
+      <div className={cn('rounded-md border', className)}>
+        <div className="flex items-center gap-4 border-b px-3 py-3">
+          {Array.from({ length: skeletonCols }).map((_, i) => (
+            <Skeleton key={i} className="h-4 flex-1" />
+          ))}
+        </div>
+        {Array.from({ length: 6 }).map((_, r) => (
+          <div key={r} className="flex items-center gap-4 border-b px-3 py-3.5 last:border-b-0">
+            {Array.from({ length: skeletonCols }).map((_, i) => (
+              <Skeleton key={i} className="h-4 flex-1" />
+            ))}
+          </div>
+        ))}
       </div>
     );
   }
 
   return (
     <div className={cn('space-y-3', className)}>
+      {/* 移动端卡片视图（窄屏且配置了 mobileCardFields 时替代宽表） */}
+      {isMobile && mobileCardFields ? (
+        <MobileCardList
+          items={paged}
+          itemKey={getKey}
+          fields={mobileCardFields}
+          onItemClick={onRowClick ? (row, idx) => onRowClick(row, idx) : undefined}
+          emptyText={emptyText}
+        />
+      ) : (
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -200,9 +236,12 @@ export function DataTable<T extends DataRow = DataRow>({
               <TableRow>
                 <TableCell
                   colSpan={(selectable ? 1 : 0) + (showIndex ? 1 : 0) + columns.length}
-                  className="h-24 text-center text-muted-foreground"
+                  className="h-32 text-center text-muted-foreground"
                 >
-                  {emptyText}
+                  <div className="flex flex-col items-center gap-2">
+                    <Inbox className="h-8 w-8 text-muted-foreground/50" aria-hidden />
+                    <span className="text-sm">{emptyText}</span>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
@@ -212,7 +251,7 @@ export function DataTable<T extends DataRow = DataRow>({
                 return (
                   <TableRow
                     key={key}
-                    className={cn(onRowClick && 'cursor-pointer')}
+                    className={cn('even:bg-muted/40', onRowClick && 'cursor-pointer')}
                     onClick={() => onRowClick?.(row, globalIdx)}
                   >
                     {selectable && (
@@ -242,6 +281,7 @@ export function DataTable<T extends DataRow = DataRow>({
           </TableBody>
         </Table>
       </div>
+      )}
 
       {/* 分页控件 */}
       {showPagination && totalPages > 1 && (

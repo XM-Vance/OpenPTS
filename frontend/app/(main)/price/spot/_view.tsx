@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { format, subDays } from 'date-fns';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   CartesianGrid,
   ComposedChart,
@@ -20,11 +21,14 @@ import {
   getSpotMarketStatistics,
   getSpotMarketPriceCurve,
   getSpotMarketList,
+  generateSpotMarketDemoData,
 } from '@/lib/api/spot-market';
+import { extractErrorMessage } from '@/lib/api/client';
 import { StatCard } from '@/components/data-display/stat-card';
 import { ChartContainer } from '@/components/charts/chart-container';
 import { CustomTooltip } from '@/components/charts/custom-tooltip';
 import { DataTable, type DataTableColumn, type DataRow } from '@/components/data-display/data-table';
+import type { MobileCardField } from '@/components/data-display/mobile-card-list';
 import { PageHeader } from '@/components/data-display/page-header';
 import {
   DollarSign,
@@ -34,7 +38,10 @@ import {
   Activity,
   Eye,
   EyeOff,
+  Database,
+  RefreshCw,
 } from 'lucide-react';
+import { EmptyState } from '@/components/feedback';
 
 function pointTime(i: number, points = 48): string {
   const mins = (i * 24 * 60) / points;
@@ -42,6 +49,11 @@ function pointTime(i: number, points = 48): string {
   const m = mins % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
+
+// LEAR 日前电价预测面板（懒加载，含 recharts，AGENTS.md §8）
+const ForecastPanel = dynamic(() => import('./_forecast-panel').then((m) => m.ForecastPanel), {
+  ssr: false,
+});
 
 function fmt(v: number | null | undefined, digits = 2): string {
   if (v == null) return '-';
@@ -53,6 +65,19 @@ const FIELD_CLASS =
 
 export default function SpotPricePage() {
   const { has } = usePermission();
+  const canWrite = has('price_management:write');
+  const qc = useQueryClient();
+  const [demoError, setDemoError] = useState<string | null>(null);
+
+  // 生成演示数据（填 spot_market_daily 表）
+  const demoMut = useMutation({
+    mutationFn: () => generateSpotMarketDemoData(),
+    onSuccess: () => {
+      setDemoError(null);
+      qc.invalidateQueries({ queryKey: ['spot-market'] });
+    },
+    onError: (e: unknown) => setDemoError(extractErrorMessage(e)),
+  });
 
   const [dateRange, setDateRange] = useState({
     start: format(subDays(new Date(), 7), 'yyyy-MM-dd'),
@@ -147,7 +172,7 @@ export default function SpotPricePage() {
       align: 'right',
       sortable: true,
       render: (row: DataRow) => (
-        <span className="text-emerald-600 font-medium">{fmt(row.min_price ?? row.low, 2)}</span>
+        <span className="text-emerald-700 font-medium">{fmt(row.min_price ?? row.low, 2)}</span>
       ),
     },
     {
@@ -159,6 +184,16 @@ export default function SpotPricePage() {
         return v != null ? `${(v * 100).toFixed(1)}%` : '-';
       },
     },
+  ];
+
+  // 移动端卡片字段（窄屏替代 6 列宽表，复用列渲染逻辑）
+  const mobileCardFields: MobileCardField<DataRow>[] = [
+    { key: 'date', primary: true, render: (row) => String(row.date ?? '—') },
+    { label: '日前均价', emphasize: true, render: (row) => fmt(row.da_avg_price ?? row.day_ahead_price, 2) },
+    { label: '实时均价', emphasize: true, render: (row) => fmt(row.rt_avg_price ?? row.realtime_price, 2) },
+    { label: '最高', render: (row) => <span className="text-destructive font-medium">{fmt(row.max_price ?? row.high, 2)}</span> },
+    { label: '最低', render: (row) => <span className="text-emerald-700 font-medium">{fmt(row.min_price ?? row.low, 2)}</span> },
+    { label: '波动率', render: (row) => { const v = row.volatility as number; return v != null ? `${(v * 100).toFixed(1)}%` : '-'; } },
   ];
 
   const listData = useMemo(() => {
@@ -180,7 +215,25 @@ export default function SpotPricePage() {
       <PageHeader
         title="现货价格"
         description="现货市场价格走势 · 日前 / 实时价格对比 · 统计指标"
+        actions={
+          canWrite ? (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => demoMut.mutate()} disabled={demoMut.isPending}>
+                {demoMut.isPending ? (
+                  <RefreshCw className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Database className="mr-1 h-4 w-4" />
+                )}
+                {demoMut.isPending ? '生成中...' : '生成演示数据'}
+              </Button>
+            </div>
+          ) : undefined
+        }
       />
+
+      {demoError && (
+        <p className="text-sm text-destructive">{demoError}</p>
+      )}
 
       {/* 日期筛选 */}
       <Card>
@@ -265,7 +318,7 @@ export default function SpotPricePage() {
             </ComposedChart>
           </ResponsiveContainer>
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无曲线数据</div>
+          <EmptyState compact className="h-full" title="暂无曲线数据" />
         )}
       </ChartContainer>
 
@@ -302,9 +355,13 @@ export default function SpotPricePage() {
             pageSize={10}
             showPagination
             loading={listLoading}
+            mobileCardFields={mobileCardFields}
           />
         </CardContent>
       </Card>
+
+      {/* LEAR 日前电价预测面板（含相似日法对照 + 准确率回溯） */}
+      <ForecastPanel />
     </div>
   );
 }

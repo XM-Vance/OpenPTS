@@ -48,44 +48,6 @@ export async function listSolarStations(): Promise<{ items: SolarStation[] }> {
   return data;
 }
 
-export async function getSolarStation(id: string): Promise<SolarStation> {
-  const { data } = await apiClient.get(`/api/v1/solar/stations/${id}`);
-  return data;
-}
-
-export async function createSolarStation(payload: {
-  station_name: string;
-  location?: string;
-  capacity_kw: number;
-  status?: string;
-  installed_date?: string;
-  latitude?: number;
-  longitude?: number;
-}): Promise<SolarStation> {
-  const { data } = await apiClient.post('/api/v1/solar/stations', payload);
-  return data;
-}
-
-export async function updateSolarStation(
-  id: string,
-  payload: {
-    station_name: string;
-    location?: string;
-    capacity_kw: number;
-    status?: string;
-    installed_date?: string;
-    latitude?: number;
-    longitude?: number;
-  },
-): Promise<SolarStation> {
-  const { data } = await apiClient.put(`/api/v1/solar/stations/${id}`, payload);
-  return data;
-}
-
-export async function deleteSolarStation(id: string): Promise<void> {
-  await apiClient.delete(`/api/v1/solar/stations/${id}`);
-}
-
 export async function listSolarForecast(params?: {
   station_id?: string;
   limit?: number;
@@ -106,5 +68,35 @@ export async function generateSolarDemoData(
   days = 30,
 ): Promise<{ days: number; stations: number; message: string }> {
   const { data } = await apiClient.post('/api/v1/solar/demo-data', { days });
+  return data;
+}
+
+// pvlib 光伏预测结果（PVWatts 物理模型，由算法服务 heavy 端点计算）
+export interface PVForecastPoint {
+  datetime: string;
+  ac_power_kw: number;
+  dc_power_kw?: number;
+  cell_temperature?: number | null;
+  ghi?: number;
+  temp_air?: number;
+}
+export interface PVForecastResult {
+  data: PVForecastPoint[];
+  summary: {
+    total_energy_kwh?: number;
+    peak_power_kw?: number;
+    system_capacity_kw?: number;
+    capacity_factor?: number;
+    hours?: number;
+    [k: string]: unknown;
+  };
+}
+
+/**
+ * 调用算法服务 pvlib 对指定站点做真实光伏出力预测（替代高斯钟形伪造）。
+ * 算法服务不可达时抛错，调用方应回退到 listSolarForecast（DB 历史预测）。
+ */
+export async function pvForecastByStation(stationId: string): Promise<PVForecastResult> {
+  const { data } = await apiClient.get('/api/v1/solar/forecast/pv', { params: { station_id: stationId } });
   return data;
 }

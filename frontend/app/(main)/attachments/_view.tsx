@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { listCustomers } from '@/lib/api/customers';
 import { listContracts } from '@/lib/api/retail';
 import { cn } from '@/lib/utils';
+import { DemoBadge } from '@/components/feedback';
 import { Trash2, Search, Check, ChevronsUpDown } from 'lucide-react';
 
 const SELECT_CLASS =
@@ -20,7 +21,7 @@ const SELECT_CLASS =
 
 type ResourceKind = 'customers' | 'retail_contracts';
 
-/* ── Mock storage stats by business type ── */
+/* ── 存储统计（示例数据：后端暂无按业务类型聚合的存储用量统计端点）── */
 const STORAGE_STATS = [
   { name: '客户资质', value: 2340, fill: '#6366f1' },
   { name: '合同 PDF', value: 1850, fill: '#3b82f6' },
@@ -78,7 +79,7 @@ export default function AttachmentsPage() {
 
       {/* ═══════════ Storage Pie Chart ═══════════ */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <ChartContainer title="存储用量统计（按业务类型）">
+        <ChartContainer title="存储用量统计（按业务类型 · 示例数据）">
           <ResponsiveContainer width="100%" height={280}>
             <PieChart>
               <Pie
@@ -104,7 +105,10 @@ export default function AttachmentsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">存储概览</CardTitle>
+            <CardTitle className="text-base">
+              存储概览
+              <DemoBadge className="ml-1" tooltip="以下存储数字为示例数据，非真实统计" />
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between rounded-md border p-3">

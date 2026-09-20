@@ -26,6 +26,8 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { apiClient, extractErrorMessage } from '@/lib/api/client';
+import { ChartLoading } from '@/components/feedback';
+import { EmptyState } from '@/components/feedback';
 
 async function fetchCustomer360(id: string) {
   try {
@@ -51,7 +53,7 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
 /* ── Tab Content Renderers ── */
 function ContractsTab({ data }: { data: any[] }) {
   if (!data || data.length === 0) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">暂无合同数据</div>;
+    return <EmptyState compact className="py-8 text-center text-sm text-muted-foreground" title="暂无合同数据" />;
   }
   return (
     <div className="rounded-lg border">
@@ -89,7 +91,7 @@ function ContractsTab({ data }: { data: any[] }) {
 
 function SettlementsTab({ data }: { data: any[] }) {
   if (!data || data.length === 0) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">暂无结算数据</div>;
+    return <EmptyState compact className="py-8 text-center text-sm text-muted-foreground" title="暂无结算数据" />;
   }
   return (
     <div className="rounded-lg border">
@@ -125,7 +127,7 @@ function SettlementsTab({ data }: { data: any[] }) {
 
 function DocumentsTab({ data }: { data: any[] }) {
   if (!data || data.length === 0) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">暂无文档数据</div>;
+    return <EmptyState compact className="py-8 text-center text-sm text-muted-foreground" title="暂无文档数据" />;
   }
   return (
     <div className="rounded-lg border">
@@ -157,7 +159,7 @@ function DocumentsTab({ data }: { data: any[] }) {
 
 function LoadTab({ data }: { data: any[] }) {
   if (!data || data.length === 0) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">暂无负荷数据</div>;
+    return <EmptyState compact className="py-8 text-center text-sm text-muted-foreground" title="暂无负荷数据" />;
   }
   return (
     <div className="rounded-lg border">
@@ -189,7 +191,7 @@ function LoadTab({ data }: { data: any[] }) {
 
 function AlertsTab({ data }: { data: any[] }) {
   if (!data || data.length === 0) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">暂无告警数据</div>;
+    return <EmptyState compact className="py-8 text-center text-sm text-muted-foreground" title="暂无告警数据" />;
   }
   return (
     <div className="rounded-lg border">
@@ -237,7 +239,7 @@ function AlertsTab({ data }: { data: any[] }) {
 
 function ProfitTab({ data }: { data: any[] }) {
   if (!data || data.length === 0) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">暂无利润数据</div>;
+    return <EmptyState compact className="py-8 text-center text-sm text-muted-foreground" title="暂无利润数据" />;
   }
   return (
     <div className="rounded-lg border">
@@ -257,7 +259,7 @@ function ProfitTab({ data }: { data: any[] }) {
               <TableCell className="font-medium">{p.month ?? '-'}</TableCell>
               <TableCell>¥{p.revenue ?? '-'}</TableCell>
               <TableCell>¥{p.cost ?? '-'}</TableCell>
-              <TableCell className={Number(p.profit) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+              <TableCell className={Number(p.profit) >= 0 ? 'text-red-700' : 'text-emerald-700'}>
                 ¥{p.profit ?? '-'}
               </TableCell>
               <TableCell>{p.margin ?? '-'}%</TableCell>
@@ -271,7 +273,7 @@ function ProfitTab({ data }: { data: any[] }) {
 
 function StationsTab({ data }: { data: any[] }) {
   if (!data || data.length === 0) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">暂无电站数据</div>;
+    return <EmptyState compact className="py-8 text-center text-sm text-muted-foreground" title="暂无电站数据" />;
   }
   return (
     <div className="rounded-lg border">
@@ -334,9 +336,7 @@ export default function Customer360Page() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center text-sm text-muted-foreground">
-        加载中…
-      </div>
+      <ChartLoading className="min-h-[60vh]" />
     );
   }
 
@@ -347,7 +347,7 @@ export default function Customer360Page() {
           <ArrowLeft className="mr-1 h-4 w-4" />
           返回
         </Button>
-        <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center text-red-700">
+        <div className="rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/15 p-6 text-center text-red-700 dark:text-red-400">
           加载客户数据失败：{error instanceof Error ? error.message : '未知错误'}
         </div>
       </div>

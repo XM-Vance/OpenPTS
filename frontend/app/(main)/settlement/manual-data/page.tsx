@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DemoBadge } from '@/components/feedback';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -24,8 +23,12 @@ import {
   createManualItem,
   genManualDemo,
   listManualItems,
+  importManualData,
+  type ManualImportResult,
 } from '@/lib/api/monthly-manual';
 import { Download, Upload, Clock, ArrowRight } from 'lucide-react';
+import { EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const SELECT_CLASS =
   'flex h-9 rounded-md border border-input bg-transparent px-3 text-sm';
@@ -39,7 +42,7 @@ function categoryVariant(c: string): 'default' | 'secondary' | 'destructive' | '
   return 'secondary';
 }
 
-// 模拟审计日志数据（基于手工数据项生成）
+// 审计日志类型定义（真实审计 API 接入后填充数据）
 interface AuditEntry {
   id: string;
   timestamp: string;
@@ -50,28 +53,6 @@ interface AuditEntry {
   newValue: string;
   itemId: string;
   itemName: string;
-}
-
-function generateAuditLog(items: { id: string; item_name: string; value: number; updated_at: string; created_by?: string | null }[]): AuditEntry[] {
-  return items.slice(0, 10).map((item, idx) => {
-    const actions = ['修改', '修改', '修改', '审核', '修改'];
-    const fields = ['数值', '数值', '来源', '备注', '数值'];
-    const action = actions[idx % actions.length];
-    const field = fields[idx % fields.length];
-    const oldVal = field === '数值' ? fmt(item.value * (0.9 + Math.random() * 0.1)) : '旧值';
-    const newVal = field === '数值' ? fmt(item.value) : '新值';
-    return {
-      id: `audit-${idx}`,
-      timestamp: item.updated_at.slice(0, 19).replace('T', ' '),
-      operator: item.created_by ?? 'admin',
-      action,
-      field,
-      oldValue: oldVal,
-      newValue: newVal,
-      itemId: item.id,
-      itemName: item.item_name,
-    };
-  });
 }
 
 export default function ManualDataPage() {
@@ -85,6 +66,9 @@ export default function ManualDataPage() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [selectedAudit, setSelectedAudit] = useState<AuditEntry | null>(null);
+  const [importPreview, setImportPreview] = useState<ManualImportResult | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['manual-items', category, month],
@@ -104,10 +88,40 @@ export default function ManualDataPage() {
     }
   };
 
+  // 批量导入（WP1.6）：选文件 → dry_run 预览 → 确认入库
+  const onImportFile = async (f: File) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await importManualData(f, true);
+      setImportFile(f);
+      setImportPreview(res);
+    } catch (e) {
+      setError(extractErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmImport = async () => {
+    if (!importFile) return;
+    setImporting(true);
+    try {
+      await importManualData(importFile, false);
+      setImportPreview(null);
+      setImportFile(null);
+      qc.invalidateQueries({ queryKey: ['manual-items'] });
+    } catch (e) {
+      setError(extractErrorMessage(e));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const items = useMemo(() => data?.items ?? [], [data]);
 
-  // 生成审计日志
-  const auditLog = useMemo(() => generateAuditLog(items), [items]);
+  // 审计日志暂无真实后端 API 接入，置空以区分「无数据」与「真实数据」
+  const auditLog: AuditEntry[] = [];
 
   // 导出CSV
   const handleExportCSV = useCallback(() => {
@@ -162,11 +176,12 @@ export default function ManualDataPage() {
               批量导入
               <input
                 type="file"
-                accept=".csv"
+                accept=".csv,.xlsx,.txt"
                 className="hidden"
                 onChange={(e) => {
-                  // 文件选择后的处理逻辑占位
+                  const f = e.target.files?.[0];
                   e.target.value = '';
+                  if (f) onImportFile(f);
                 }}
               />
             </label>
@@ -209,16 +224,17 @@ export default function ManualDataPage() {
       </Card>
 
       {/* 修改审计日志时间线 */}
-      {auditLog.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              修改审计日志
-              <DemoBadge tooltip="审计日志的旧值为随机生成，非真实变更记录" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            修改审计日志
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {auditLog.length === 0 ? (
+            <EmptyState compact className="py-8" title="暂无审计记录" />
+          ) : (
             <div className="relative">
               {/* 时间线竖线 */}
               <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-border" />
@@ -253,11 +269,60 @@ export default function ManualDataPage() {
                 ))}
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
       {/* Diff 对比面板 */}
+      {/* 批量导入预览弹窗（WP1.6） */}
+      <Dialog open={!!importPreview} onClose={() => setImportPreview(null)}>
+        <DialogHeader>
+          <DialogTitle>批量导入预览</DialogTitle>
+        </DialogHeader>
+        <div className="max-h-80 overflow-y-auto">
+          <p className="mb-2 text-xs text-muted-foreground">
+            共 {importPreview?.total ?? 0} 行，有效 {importPreview?.valid ?? 0} 行
+            （格式：月份, 类别, 条目, 数值, 单位, 来源?, 备注?）
+          </p>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>行</TableHead>
+                <TableHead>月份</TableHead>
+                <TableHead>类别/条目</TableHead>
+                <TableHead className="text-right">数值</TableHead>
+                <TableHead>校验</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(importPreview?.rows ?? []).map((r) => (
+                <TableRow key={r.line_no}>
+                  <TableCell>{r.line_no}</TableCell>
+                  <TableCell>{r.operating_month}</TableCell>
+                  <TableCell>{r.category} / {r.item_name}</TableCell>
+                  <TableCell className="text-right">{r.value}</TableCell>
+                  <TableCell className="text-xs">
+                    {r.errors?.length ? (
+                      <span className="text-destructive">{r.errors.join('；')}</span>
+                    ) : (
+                      <span className="text-emerald-700">通过</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setImportPreview(null)}>
+            取消
+          </Button>
+          <Button onClick={confirmImport} disabled={importing || (importPreview?.valid ?? 0) === 0}>
+            {importing ? '导入中...' : `确认导入 ${importPreview?.valid ?? 0} 行`}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
       {selectedAudit && (
         <Card>
           <CardHeader>
@@ -266,8 +331,8 @@ export default function ManualDataPage() {
           <CardContent>
             <div className="grid gap-4 md:grid-cols-2">
               {/* 修改前 */}
-              <div className="rounded-lg border border-red-200 bg-red-50/50 p-4">
-                <p className="text-xs font-semibold text-red-600 mb-2">修改前</p>
+              <div className="rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50/50 dark:bg-red-500/10 p-4">
+                <p className="text-xs font-semibold text-red-700 mb-2">修改前</p>
                 <div className="space-y-1">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">字段</span>
@@ -275,13 +340,13 @@ export default function ManualDataPage() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">原值</span>
-                    <span className="font-mono text-red-600 line-through">{selectedAudit.oldValue}</span>
+                    <span className="font-mono text-red-700 line-through">{selectedAudit.oldValue}</span>
                   </div>
                 </div>
               </div>
               {/* 修改后 */}
-              <div className="rounded-lg border border-green-200 bg-green-50/50 p-4">
-                <p className="text-xs font-semibold text-green-600 mb-2">修改后</p>
+              <div className="rounded-lg border border-green-200 dark:border-green-500/30 bg-green-50/50 dark:bg-green-500/10 p-4">
+                <p className="text-xs font-semibold text-green-700 mb-2">修改后</p>
                 <div className="space-y-1">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">字段</span>
@@ -289,7 +354,7 @@ export default function ManualDataPage() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">新值</span>
-                    <span className="font-mono text-green-600 font-bold">{selectedAudit.newValue}</span>
+                    <span className="font-mono text-green-700 font-bold">{selectedAudit.newValue}</span>
                   </div>
                 </div>
               </div>
@@ -297,7 +362,7 @@ export default function ManualDataPage() {
             <div className="mt-3 flex items-center justify-center text-sm text-muted-foreground">
               <span className="font-mono text-red-500">{selectedAudit.oldValue}</span>
               <ArrowRight className="mx-3 h-4 w-4" />
-              <span className="font-mono text-green-600 font-bold">{selectedAudit.newValue}</span>
+              <span className="font-mono text-green-700 font-bold">{selectedAudit.newValue}</span>
             </div>
             <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
               <span>操作人：{selectedAudit.operator}</span>
@@ -324,9 +389,7 @@ export default function ManualDataPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={8}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {items.map((i) => (
@@ -347,9 +410,7 @@ export default function ManualDataPage() {
             ))}
             {items.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  暂无手工数据{canWrite && '，可点右上「生成演示数据」或「新增条目」'}
-                </TableCell>
+                <TableCell colSpan={8}><EmptyState compact title={<> 暂无手工数据{canWrite && '，可点右上「生成演示数据」或「新增条目」'} </>} /></TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -390,6 +451,11 @@ function ManualCreateDialog({
     setErr(null);
     if (!month || !category || !itemName) {
       setErr('请填写月份 / 分类 / 项目名');
+      return;
+    }
+    // 月份格式校验（F10）：必须 YYYY-MM，避免 "2026-5"/"20265" 等非法值直传后端
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      setErr('月份格式应为 YYYY-MM（如 2026-05）');
       return;
     }
     const v = Number(value);

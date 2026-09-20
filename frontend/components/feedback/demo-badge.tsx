@@ -38,7 +38,7 @@ export function DemoBadge({
     <Badge
       variant="warning"
       title={tooltip}
-      className={cn('gap-1 bg-amber-100 text-amber-700 hover:bg-amber-100', className)}
+      className={cn('gap-1 bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:bg-amber-500/15', className)}
     >
       <Sparkles className="h-3 w-3" />
       {label}

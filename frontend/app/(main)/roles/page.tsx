@@ -18,6 +18,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
+import { EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   createRole,
   deleteRole,
@@ -110,7 +112,7 @@ export default function RolesPage() {
           </CardHeader>
           <CardContent>
             {Object.keys(permTree).length === 0 ? (
-              <p className="text-sm text-muted-foreground">暂无权限数据</p>
+              <EmptyState compact title="暂无权限数据" />
             ) : (
               <div className="space-y-3 max-h-[60vh] overflow-y-auto">
                 {Object.entries(permTree).map(([mod, perms]) => (
@@ -210,10 +212,10 @@ export default function RolesPage() {
                         return (
                           <div key={p.code} className="grid grid-cols-[1fr_40px_40px] items-center gap-2 text-xs">
                             <span>{p.action}{cn && <span className="ml-1 text-muted-foreground">{cn}</span>}</span>
-                            <span className={aHas ? 'text-emerald-600 font-bold' : 'text-muted-foreground'}>
+                            <span className={aHas ? 'text-emerald-700 font-bold' : 'text-muted-foreground'}>
                               {aHas ? '✓' : '✗'}
                             </span>
-                            <span className={bHas ? 'text-emerald-600 font-bold' : 'text-muted-foreground'}>
+                            <span className={bHas ? 'text-emerald-700 font-bold' : 'text-muted-foreground'}>
                               {bHas ? '✓' : '✗'}
                             </span>
                           </div>
@@ -250,9 +252,7 @@ export default function RolesPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={6}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {roles?.map((r) => (
@@ -466,7 +466,7 @@ function RolePermissionsDialog({
         error ? (
           <p className="text-sm text-destructive">{error}</p>
         ) : (
-          <p className="text-sm text-muted-foreground">加载中...</p>
+          <Skeleton className="h-5 w-full" />
         )
       ) : (
         <div className="max-h-[50vh] space-y-3 overflow-y-auto">

@@ -34,6 +34,8 @@ import { ChartContainer } from '@/components/charts/chart-container';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
 import { genCustProfitDemo, listCustomerProfit } from '@/lib/api/customer-profit-analysis';
+import { EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   customerProfitAnalysisApi,
   type ProfitViewMode,
@@ -83,10 +85,12 @@ export default function CustomerProfitPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
   const [viewMode, setViewMode] = useState<ProfitViewMode>('monthly');
+  // Phase 3：实际结算（service 客户）vs 签约前测算（intent 客户），两类分开看，互不污染。
+  const [profitKind, setProfitKind] = useState<'actual' | 'estimate'>('actual');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['customer-profit'],
-    queryFn: () => listCustomerProfit({ limit: 50 }),
+    queryKey: ['customer-profit', profitKind],
+    queryFn: () => listCustomerProfit({ limit: 50, estimate: profitKind === 'estimate' }),
   });
 
   const { data: dashboard } = useQuery({
@@ -232,15 +236,13 @@ export default function CustomerProfitPage() {
         {/* Chart 1: 利润瀑布图 */}
         <ChartContainer title="利润瀑布图（收入→成本→费用→净利润）">
           {waterfallData.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              暂无利润数据{canWrite && '，可点右上「生成演示数据」'}
-            </p>
+            <EmptyState compact title={<>暂无利润数据{canWrite && '，可点右上「生成演示数据」'}</>} />
           ) : (
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={waterfallData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6b7280' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} width={60} unit=" 万" />
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} width={60} unit=" 万" />
                 <Tooltip formatter={(v: number, name: string) =>
                   name === 'invisible' ? null : `${v.toFixed(2)} 万元`}
                   contentStyle={{ fontSize: 12 }} />
@@ -258,15 +260,13 @@ export default function CustomerProfitPage() {
         {/* Chart 2: 客户利润排行 */}
         <ChartContainer title="Top-10 客户毛利排行（万元）">
           {ranking.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              暂无利润数据{canWrite && '，可点右上「生成演示数据」'}
-            </p>
+            <EmptyState compact title={<>暂无利润数据{canWrite && '，可点右上「生成演示数据」'}</>} />
           ) : (
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={ranking} layout="vertical" margin={{ top: 8, right: 12, left: 80, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis type="number" tick={{ fontSize: 12, fill: '#6b7280' }} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#6b7280' }} width={120} />
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" tick={{ fontSize: 12 }} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={120} />
                 <Tooltip formatter={(v: number) => `${v.toFixed(2)} 万元`} contentStyle={{ fontSize: 12 }} />
                 <Bar dataKey="profit" fill="#10b981" isAnimationActive={false}>
                   {ranking.map((_, idx) => (
@@ -282,14 +282,14 @@ export default function CustomerProfitPage() {
       {/* Chart 3: 利润敏感度分析 */}
       <ChartContainer title="利润敏感度分析（电价±5%影响）">
         {sensitivityData.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无数据</p>
+          <EmptyState compact title="暂无数据" />
         ) : (
           <ResponsiveContainer width="100%" height={280}>
             <ComposedChart data={sensitivityData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="电价变动" tick={{ fontSize: 11, fill: '#6b7280' }} />
-              <YAxis yAxisId="profit" tick={{ fontSize: 11, fill: '#6b7280' }} width={60} unit=" 万" />
-              <YAxis yAxisId="margin" orientation="right" tick={{ fontSize: 11, fill: '#6b7280' }} width={60} unit="%" />
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="电价变动" tick={{ fontSize: 11 }} />
+              <YAxis yAxisId="profit" tick={{ fontSize: 11 }} width={60} unit=" 万" />
+              <YAxis yAxisId="margin" orientation="right" tick={{ fontSize: 11 }} width={60} unit="%" />
               <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number, name: string) =>
                 name === '毛利率' ? `${v}%` : `${v} 万元`} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -302,8 +302,29 @@ export default function CustomerProfitPage() {
 
       {/* 客户利润明细 */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">客户利润明细</CardTitle>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base">
+            客户利润明细
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              {profitKind === 'estimate' ? '签约前测算（意向客户预估）' : '实际结算（服务客户）'}
+            </span>
+          </CardTitle>
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant={profitKind === 'actual' ? 'default' : 'outline'}
+              onClick={() => setProfitKind('actual')}
+            >
+              实际结算
+            </Button>
+            <Button
+              size="sm"
+              variant={profitKind === 'estimate' ? 'default' : 'outline'}
+              onClick={() => setProfitKind('estimate')}
+            >
+              签约前测算
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border">
@@ -322,7 +343,7 @@ export default function CustomerProfitPage() {
               <TableBody>
                 {isLoading && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">加载中...</TableCell>
+                    <TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell>
                   </TableRow>
                 )}
                 {items.map((p) => (
@@ -332,7 +353,7 @@ export default function CustomerProfitPage() {
                     <TableCell className="text-right">{fmt(p.energy_mwh, 1)}</TableCell>
                     <TableCell className="text-right">{wan(p.revenue)}</TableCell>
                     <TableCell className="text-right">{wan(p.cost)}</TableCell>
-                    <TableCell className="text-right font-bold text-emerald-600">{wan(p.gross_profit)}</TableCell>
+                    <TableCell className="text-right font-bold text-emerald-700">{wan(p.gross_profit)}</TableCell>
                     <TableCell className="text-right">
                       <Badge variant={marginVariant(p.gross_margin)}>{fmt(p.gross_margin, 1)}%</Badge>
                     </TableCell>
@@ -340,7 +361,7 @@ export default function CustomerProfitPage() {
                 ))}
                 {items.length === 0 && !isLoading && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">暂无利润数据</TableCell>
+                    <TableCell colSpan={7}><EmptyState compact title={<> {profitKind === 'estimate' ? '暂无测算数据' : '暂无利润数据'} </>} /></TableCell>
                   </TableRow>
                 )}
               </TableBody>

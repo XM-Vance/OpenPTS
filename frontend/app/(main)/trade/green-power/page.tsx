@@ -16,10 +16,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { StatCard } from '@/components/data-display/stat-card';
+import { MobileCardList, type MobileCardField, type MobileRow } from '@/components/data-display/mobile-card-list';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { ChartContainer } from '@/components/charts/chart-container';
-import { DemoBadge } from '@/components/feedback';
+import { ChartLoading, EmptyState, DemoBadge } from '@/components/feedback';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   listGreenPowerTrades,
   genGreenPowerDemo,
@@ -110,6 +113,24 @@ export default function GreenPowerPage() {
   };
 
   const items: GreenPowerTrade[] = data?.items ?? [];
+  const isMobile = useIsMobile();
+  const greenMobileFields: MobileCardField<MobileRow>[] = [
+    {
+      primary: true,
+      render: (t) => (
+        <span>
+          <span className="font-medium">{(t as any).trade_date?.slice(0, 10)}</span>
+          <span className="ml-2 text-xs">{(t as any).product_name}</span>
+        </span>
+      ),
+    },
+    { label: '状态', render: (t) => <Badge variant={statusVariant((t as any).status)}>{STATUS_LABEL[(t as any).status] ?? (t as any).status}</Badge> },
+    { label: '金额', emphasize: true, render: (t) => <span className="text-blue-600">{fmtInt((t as any).amount)}</span> },
+    { label: '电量', emphasize: true, render: (t) => `${fmt((t as any).energy_mwh)} MWh` },
+    { label: '价格', render: (t) => fmt((t as any).price) },
+    { label: '绿证数', render: (t) => (t as any).green_cert_count },
+    { label: '交易对手', render: (t) => <span className="text-muted-foreground">{(t as any).counterparty}</span> },
+  ];
 
   const totalEnergy = items.reduce((s, i) => s + i.energy_mwh, 0);
   const totalAmount = items.reduce((s, i) => s + i.amount, 0);
@@ -181,7 +202,7 @@ export default function GreenPowerPage() {
         <Card>
           <CardContent className="pt-6">
             <p className="text-xs text-muted-foreground">总电量 (MWh)</p>
-            <p className="mt-1 text-2xl font-bold text-emerald-600">
+            <p className="mt-1 text-2xl font-bold text-emerald-700">
               {fmtInt(totalEnergy)}
             </p>
           </CardContent>
@@ -204,7 +225,7 @@ export default function GreenPowerPage() {
 
       {/* ── 碳减排量可视化卡片 ── */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="border-emerald-200 bg-emerald-50/50">
+        <Card className="border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/10">
           <CardContent className="pt-6">
             <div className="flex items-start justify-between">
               <div>
@@ -212,15 +233,15 @@ export default function GreenPowerPage() {
                 <p className="mt-1 text-3xl font-bold text-emerald-700">
                   {carbonReduction.toLocaleString('zh-CN')}
                 </p>
-                <p className="mt-1 text-xs text-emerald-600">吨 CO₂</p>
+                <p className="mt-1 text-xs text-emerald-700">吨 CO₂</p>
               </div>
-              <div className="rounded-full bg-emerald-100 p-3">
-                <Leaf className="h-6 w-6 text-emerald-600" />
+              <div className="rounded-full bg-emerald-100 dark:bg-emerald-500/15 p-3">
+                <Leaf className="h-6 w-6 text-emerald-700" />
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-blue-200 bg-blue-50/50">
+        <Card className="border-blue-200 dark:border-blue-500/30 bg-blue-50/50 dark:bg-blue-500/10">
           <CardContent className="pt-6">
             <div className="flex items-start justify-between">
               <div>
@@ -230,13 +251,13 @@ export default function GreenPowerPage() {
                 </p>
                 <p className="mt-1 text-xs text-blue-600">棵/年</p>
               </div>
-              <div className="rounded-full bg-blue-100 p-3">
+              <div className="rounded-full bg-blue-100 dark:bg-blue-500/15 p-3">
                 <Droplets className="h-6 w-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-violet-200 bg-violet-50/50">
+        <Card className="border-violet-200 bg-violet-50/50 dark:bg-violet-500/10">
           <CardContent className="pt-6">
             <div className="flex items-start justify-between">
               <div>
@@ -246,7 +267,7 @@ export default function GreenPowerPage() {
                 </p>
                 <p className="mt-1 text-xs text-violet-600">元/张</p>
               </div>
-              <div className="rounded-full bg-violet-100 p-3">
+              <div className="rounded-full bg-violet-100 dark:bg-violet-500/15 p-3">
                 <TrendingUp className="h-6 w-6 text-violet-600" />
               </div>
             </div>
@@ -264,6 +285,15 @@ export default function GreenPowerPage() {
         <GreenRatioComposed data={greenRatioTrend} />
       </ChartContainer>
 
+      {isMobile ? (
+        isLoading ? (
+          <ChartLoading className="py-8" />
+        ) : items.length === 0 ? (
+          <EmptyState compact className="py-8" title={<>暂无绿电交易数据{canWrite && '，可点右上「生成演示数据」'}</>} />
+        ) : (
+          <MobileCardList items={items as unknown as MobileRow[]} itemKey={(t) => String((t as any).id)} fields={greenMobileFields} />
+        )
+      ) : (
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -281,9 +311,7 @@ export default function GreenPowerPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={8}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {items.map((t) => (
@@ -308,14 +336,13 @@ export default function GreenPowerPage() {
             ))}
             {items.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  暂无绿电交易数据{canWrite && '，可点右上「生成演示数据」'}
-                </TableCell>
+                <TableCell colSpan={8}><EmptyState compact title={<> 暂无绿电交易数据{canWrite && '，可点右上「生成演示数据」'} </>} /></TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
+      )}
     </div>
   );
 }

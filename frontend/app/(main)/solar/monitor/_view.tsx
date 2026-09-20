@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Bar,
@@ -17,7 +17,7 @@ import {
 } from 'recharts';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DemoBadge } from '@/components/feedback';
+import { EmptyState, DemoBadge } from '@/components/feedback';
 import { Label } from '@/components/ui/label';
 import {
   Table,
@@ -27,6 +27,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { MobileCardList, type MobileCardField, type MobileRow } from '@/components/data-display/mobile-card-list';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { listSolarStations, type SolarStation } from '@/lib/api/solar';
 
 const FIELD_CLASS =
@@ -49,22 +51,32 @@ interface MonitorRow {
   dropAlert: boolean;
 }
 
+// 按站点 id + 字段盐值派生稳定伪随机数（0~1）：演示数据不随重渲染/重新挂载跳变。
+function seededRand(seed: string, salt: number): number {
+  let h = 2166136261 ^ salt;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 10000) / 10000;
+}
+
 function genMockMonitor(stations: SolarStation[]): MonitorRow[] {
   return stations.map((s) => {
     const hour = new Date().getHours();
     const isDay = hour >= 6 && hour <= 18;
     const cap = s.capacity_kw;
-    const current = isDay ? +(cap * (0.3 + 0.5 * Math.random())).toFixed(1) : 0;
+    const current = isDay ? +(cap * (0.3 + 0.5 * seededRand(s.id, 1))).toFixed(1) : 0;
     // 模拟出力骤降告警
-    const dropAlert = Math.random() < 0.15 && isDay;
+    const dropAlert = seededRand(s.id, 2) < 0.15 && isDay;
     const actualPower = dropAlert ? +(current * 0.3).toFixed(1) : current;
     return {
       station: s,
       currentPowerKw: actualPower,
-      dailyKwh: +(cap * (1 + 4 * Math.random())).toFixed(0),
-      efficiency: +(85 + 10 * Math.random()).toFixed(1),
-      irradiance: isDay ? +(400 + 500 * Math.random()).toFixed(0) : 0,
-      panelTemp: +(25 + 20 * Math.random()).toFixed(1),
+      dailyKwh: +(cap * (1 + 4 * seededRand(s.id, 3))).toFixed(0),
+      efficiency: +(85 + 10 * seededRand(s.id, 4)).toFixed(1),
+      irradiance: isDay ? +(400 + 500 * seededRand(s.id, 5)).toFixed(0) : 0,
+      panelTemp: +(25 + 20 * seededRand(s.id, 6)).toFixed(1),
       dropAlert,
     };
   });
@@ -85,8 +97,9 @@ export default function SolarMonitorPage() {
     }
   }, [stationsData, stationId]);
 
-  const stations = stationsData?.items ?? [];
-  const monitorData = genMockMonitor(stations);
+  const stations = useMemo(() => stationsData?.items ?? [], [stationsData]);
+  // 演示数据按站点列表 memo：避免 hover/setState 等重渲染时整表重新随机。
+  const monitorData = useMemo(() => genMockMonitor(stations), [stations]);
   const selected = monitorData.find((m) => m.station.id === stationId);
 
   // 状态统计
@@ -123,20 +136,29 @@ export default function SolarMonitorPage() {
 
   // ── Chart 3: 异常电站告警列表 ──
   const alertList = monitorData.filter((m) => m.dropAlert);
+  const isMobile = useIsMobile();
+  const alertMobileFields: MobileCardField<MobileRow>[] = [
+    { primary: true, render: (m) => <span className="text-red-700">{(m as any).station.station_name}</span> },
+    { label: '出力比', emphasize: true, render: (m) => <span className="text-red-700">{((m as any).currentPowerKw / (m as any).station.capacity_kw * 100).toFixed(1)}%</span> },
+    { label: '当前出力', emphasize: true, render: (m) => <span className="text-red-700 font-bold">{fmt((m as any).currentPowerKw)} kW</span> },
+    { label: '装机', render: (m) => `${fmt((m as any).station.capacity_kw, 0)} kW` },
+    { label: '所在地', render: (m) => <span className="text-muted-foreground">{(m as any).station.location}</span> },
+    { label: '告警', render: () => <Badge variant="destructive">出力骤降</Badge> },
+  ];
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold">光伏运行监控</h1>
+        <h1 className="text-2xl font-bold">发电监控</h1>
         <p className="text-sm text-muted-foreground">
-          光伏电站实时运行状态与关键指标
+          电站实时运行状态与关键指标
         </p>
       </div>
 
       {(stations.length ?? 0) === 0 ? (
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">暂无光伏站点数据</p>
+            <EmptyState compact title="暂无电站数据" />
           </CardContent>
         </Card>
       ) : (
@@ -191,7 +213,7 @@ export default function SolarMonitorPage() {
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">暂无分布数据</p>
+                  <EmptyState compact title="暂无分布数据" />
                 )}
               </CardContent>
             </Card>
@@ -245,7 +267,7 @@ export default function SolarMonitorPage() {
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">暂无出力数据</p>
+                  <EmptyState compact title="暂无出力数据" />
                 )}
               </CardContent>
             </Card>
@@ -255,13 +277,16 @@ export default function SolarMonitorPage() {
           {alertList.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base text-red-600">
+                <CardTitle className="text-base text-red-700">
                   ⚠ 异常电站告警（出力骤降）
                   <DemoBadge className="ml-1" tooltip="出力骤降告警为随机触发的演示数据" />
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="rounded-lg border border-red-200 bg-red-50/50">
+                {isMobile ? (
+                  <MobileCardList items={alertList as unknown as MobileRow[]} itemKey={(m) => String((m as any).station.id)} fields={alertMobileFields} />
+                ) : (
+                <div className="rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50/50 dark:bg-red-500/10">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -280,13 +305,13 @@ export default function SolarMonitorPage() {
                             {m.station.station_name}
                           </TableCell>
                           <TableCell>{m.station.location}</TableCell>
-                          <TableCell className="text-right font-bold text-red-600">
+                          <TableCell className="text-right font-bold text-red-700">
                             {fmt(m.currentPowerKw)}
                           </TableCell>
                           <TableCell className="text-right">
                             {fmt(m.station.capacity_kw, 0)}
                           </TableCell>
-                          <TableCell className="text-right text-red-600">
+                          <TableCell className="text-right text-red-700">
                             {((m.currentPowerKw / m.station.capacity_kw) * 100).toFixed(1)}%
                           </TableCell>
                           <TableCell>
@@ -297,6 +322,7 @@ export default function SolarMonitorPage() {
                     </TableBody>
                   </Table>
                 </div>
+                )}
               </CardContent>
             </Card>
           )}

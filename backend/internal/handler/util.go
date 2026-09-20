@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 )
 
@@ -28,4 +29,12 @@ func requireNonNegDecimal(name string, v decimal.Decimal) error {
 		return fmt.Errorf("%s 不能为负数", name)
 	}
 	return nil
+}
+
+// claimsUserIDString 当前用户 ID（字符串，未登录返回空）。
+func claimsUserIDString(c *gin.Context) string {
+	if id := claimsUserID(c); id != nil {
+		return id.String()
+	}
+	return ""
 }

@@ -32,7 +32,8 @@ import {
 } from '@/components/ui/table';
 import { StatCard } from '@/components/data-display/stat-card';
 import { ChartContainer } from '@/components/charts/chart-container';
-import { DemoBadge } from '@/components/feedback';
+import { EmptyState, DemoBadge } from '@/components/feedback';
+import { listFreqPerformance } from '@/lib/api/freq';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
 import { generateFreqDemoData, listFreqSummary } from '@/lib/api/freq';
@@ -143,7 +144,25 @@ export default function FreqClearingPage() {
   }, [items]);
 
   // 性能雷达图（随机演示数据：挂载时生成一次）
-  const radarData = useMemo(() => generatePerformanceRadar(), []);
+  // WP5.2：雷达图接真实考核指标（最新 AGC 日；无数据回退随机演示）
+  const { data: perfRes } = useQuery({
+    queryKey: ['freq-performance'],
+    queryFn: () => listFreqPerformance(30),
+  });
+  const perfItems = useMemo(() => perfRes?.items ?? [], [perfRes]);
+  const hasRealPerf = perfItems.length > 0;
+  const radarData = useMemo(() => {
+    if (!hasRealPerf) return generatePerformanceRadar();
+    const latest = perfItems.find((p) => p.regulation_type === 'AGC') ?? perfItems[0];
+    return [
+      { metric: '响应速度', value: latest.response_score, fullMark: 100 },
+      { metric: '调节精度', value: latest.precision_score, fullMark: 100 },
+      { metric: '持续时间', value: latest.duration_score, fullMark: 100 },
+      { metric: '响应延迟', value: latest.delay_score, fullMark: 100 },
+      { metric: '容量达标', value: latest.capacity_score, fullMark: 100 },
+      { metric: '综合评分', value: Math.round((latest.response_score + latest.precision_score + latest.duration_score + latest.delay_score + latest.capacity_score) / 5), fullMark: 100 },
+    ];
+  }, [hasRealPerf, perfItems]);
 
   // 最近的详细数据
   const recentChartData = useMemo(
@@ -229,9 +248,7 @@ export default function FreqClearingPage() {
         <div className="lg:col-span-2">
           <ChartContainer title="调频出清结果（里程 / 容量 / 性能分数）">
             {clearingData.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                暂无数据{canWrite ? '，请点右上「生成演示数据」' : ''}
-              </p>
+              <EmptyState compact title={<>暂无数据{canWrite ? '，请点右上「生成演示数据」' : ''}</>} />
             ) : (
               <ResponsiveContainer width="100%" height={300}>
                 <ComposedChart
@@ -277,12 +294,12 @@ export default function FreqClearingPage() {
         {/* 调频性能指标雷达图 */}
           <ChartContainer
             title="性能指标雷达图"
-            actions={<DemoBadge tooltip="响应速度/调节精度等指标为随机生成的演示数据" />}
+            actions={hasRealPerf ? <span className="text-xs text-muted-foreground">{perfItems.find((p) => p.regulation_type === 'AGC')?.settlement_date ?? ''} · AGC</span> : <DemoBadge tooltip="暂无考核数据，雷达为随机演示（导入 POST /freq/performance/import）" />}
           >
           <ResponsiveContainer width="100%" height={300}>
             <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
               <PolarGrid />
-              <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fill: '#6b7280' }} />
+              <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11 }} />
               <PolarRadiusAxis tick={{ fontSize: 10 }} domain={[0, 100]} />
               <Radar
                 name="当前性能"
@@ -301,7 +318,7 @@ export default function FreqClearingPage() {
       {/* Revenue trend chart (daily + cumulative) */}
       <ChartContainer title="调频收益趋势折线图">
         {trendData.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无数据</p>
+          <EmptyState compact title="暂无数据" />
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <ComposedChart

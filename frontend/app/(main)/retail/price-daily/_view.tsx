@@ -23,13 +23,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { MobileCardList, type MobileCardField, type MobileRow } from '@/components/data-display/mobile-card-list';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { RetailTabs } from '@/components/retail/retail-tabs';
 import { ChartContainer } from '@/components/charts/chart-container';
-import { DemoBadge } from '@/components/feedback';
+import { ChartLoading, EmptyState, DemoBadge } from '@/components/feedback';
 import { PriceHeatmap } from '@/components/charts/price-heatmap';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
 import { listContracts } from '@/lib/api/retail';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   genContractPriceDemo,
   listContractPriceDaily,
@@ -73,6 +76,15 @@ export default function ContractPriceDailyPage() {
   };
 
   const items = useMemo(() => data?.items ?? [], [data]);
+  const isMobile = useIsMobile();
+  const priceMobileFields: MobileCardField<MobileRow>[] = [
+    { primary: true, render: (p) => <span className="font-medium">{(p as any).price_date.slice(0, 10)}</span> },
+    { label: '单价', emphasize: true, render: (p) => fmt((p as any).unit_price) },
+    { label: '日金额', emphasize: true, render: (p) => <span className="text-blue-600">{wan((p as any).daily_amount)}</span> },
+    { label: '日电量', render: (p) => `${fmt((p as any).daily_energy)} MWh` },
+    { label: '累计电量', render: (p) => fmt((p as any).cumulative_energy) },
+    { label: '累计金额', render: (p) => wan((p as any).cumulative_amount) },
+  ];
 
   // 折线图：选定合同时按日均价；未选时聚合所有合同日均价
   const trend = (() => {
@@ -196,9 +208,7 @@ export default function ContractPriceDailyPage() {
           {heatmapData.length > 0 ? (
             <PriceHeatmap data={heatmapData} />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              暂无数据{canWrite && '，可点右上「生成演示数据」'}
-            </div>
+            <EmptyState compact className="h-full" title={<> 暂无数据{canWrite && '，可点右上「生成演示数据」'} </>} />
           )}
         </ChartContainer>
 
@@ -211,9 +221,9 @@ export default function ContractPriceDailyPage() {
             >
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={comparisonData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6b7280' }} />
-                  <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={60} />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 12 }} width={60} />
                   <RechartsTooltip
                     formatter={(v: number) => `${fmt(v)} 元/MWh`}
                     contentStyle={{ fontSize: 12 }}
@@ -240,9 +250,7 @@ export default function ContractPriceDailyPage() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              暂无数据
-            </div>
+            <EmptyState compact className="h-full" title="暂无数据" />
           )}
         </ChartContainer>
       </div>
@@ -253,9 +261,7 @@ export default function ContractPriceDailyPage() {
         </CardHeader>
         <CardContent>
           {trend.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              暂无数据{canWrite && '，可点右上「生成演示数据」'}
-            </p>
+            <EmptyState compact title={<>暂无数据{canWrite && '，可点右上「生成演示数据」'}</>} />
           ) : (
             <div
               className="[&_.recharts-surface:focus]:outline-none"
@@ -263,9 +269,9 @@ export default function ContractPriceDailyPage() {
             >
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={trend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6b7280' }} />
-                  <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={60} />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 12 }} width={60} />
                   <RechartsTooltip
                     formatter={(v: number) => `${fmt(v)} 元/MWh`}
                     contentStyle={{ fontSize: 12 }}
@@ -285,6 +291,15 @@ export default function ContractPriceDailyPage() {
         </CardContent>
       </Card>
 
+      {isMobile ? (
+        isLoading ? (
+          <ChartLoading className="py-8" />
+        ) : items.length === 0 ? (
+          <EmptyState compact className="py-8" title="暂无合同电价数据" />
+        ) : (
+          <MobileCardList items={items as unknown as MobileRow[]} itemKey={(p) => String((p as any).id)} fields={priceMobileFields} />
+        )
+      ) : (
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -300,9 +315,7 @@ export default function ContractPriceDailyPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={6}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {items.map((p) => (
@@ -317,14 +330,13 @@ export default function ContractPriceDailyPage() {
             ))}
             {items.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  暂无合同电价数据
-                </TableCell>
+                <TableCell colSpan={6}><EmptyState compact title="暂无合同电价数据" /></TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
+      )}
     </div>
   );
 }

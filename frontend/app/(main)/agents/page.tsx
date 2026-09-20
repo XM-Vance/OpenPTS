@@ -20,6 +20,7 @@ import { Dialog, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui
 import { ChartContainer } from '@/components/charts/chart-container';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   createAgent,
   deleteAgent,
@@ -27,6 +28,7 @@ import {
   updateAgent,
   type Agent,
 } from '@/lib/api/agents';
+import { EmptyState } from '@/components/feedback';
 
 const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
   active: { label: '启用', variant: 'default' },
@@ -163,7 +165,7 @@ export default function AgentsPage() {
         </div>
         <div className="rounded-lg border bg-card p-4">
           <p className="text-xs text-muted-foreground">启用中</p>
-          <p className="mt-1 text-2xl font-bold text-emerald-600">{commissionStats.activeCount}</p>
+          <p className="mt-1 text-2xl font-bold text-emerald-700">{commissionStats.activeCount}</p>
         </div>
         <div className="rounded-lg border bg-card p-4">
           <p className="text-xs text-muted-foreground">平均佣金比例</p>
@@ -171,7 +173,7 @@ export default function AgentsPage() {
         </div>
         <div className="rounded-lg border bg-card p-4">
           <p className="text-xs text-muted-foreground">最高佣金</p>
-          <p className="mt-1 text-2xl font-bold text-amber-600">{commissionStats.max.toFixed(1)}%</p>
+          <p className="mt-1 text-2xl font-bold text-amber-700">{commissionStats.max.toFixed(1)}%</p>
         </div>
         <div className="rounded-lg border bg-card p-4">
           <p className="text-xs text-muted-foreground">最低佣金</p>
@@ -186,9 +188,7 @@ export default function AgentsPage() {
           {top10Data.length > 0 ? (
             <AgentTop10Bar data={top10Data} colors={REGION_COLORS} />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              暂无数据
-            </div>
+            <EmptyState compact className="h-full" title="暂无数据" />
           )}
         </ChartContainer>
 
@@ -211,9 +211,7 @@ export default function AgentsPage() {
               </div>
             </div>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              暂无数据
-            </div>
+            <EmptyState compact className="h-full" title="暂无数据" />
           )}
         </ChartContainer>
       </div>
@@ -261,9 +259,7 @@ export default function AgentsPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {items.map((agent) => {
@@ -301,9 +297,7 @@ export default function AgentsPage() {
             })}
             {total === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
-                  暂无数据
-                </TableCell>
+                <TableCell colSpan={7}><EmptyState compact title="暂无数据" /></TableCell>
               </TableRow>
             )}
           </TableBody>

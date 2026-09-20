@@ -1,27 +1,17 @@
 import { apiClient } from './client';
+import type {
+  SchemaPricingModel,
+  SchemaRetailPackage,
+  SchemaRetailContract,
+} from './types.gen';
 
-export interface PricingModel {
-  code: string;
-  display_name: string;
-  package_type: string;
-  pricing_mode: string;
-  enabled: boolean;
-  sort_order: number;
-}
+// 实体类型由 OpenAPI 规范生成（与 customers.ts 同模式）。
+// 后端改字段 → `npm run gen-api-types` 重生成 → 此处与页面同步报错。
+export type PricingModel = SchemaPricingModel;
+export type RetailPackage = SchemaRetailPackage;
+export type RetailContract = SchemaRetailContract;
 
-export interface RetailPackage {
-  id: string;
-  package_name: string;
-  package_type: string;
-  model_code?: string | null;
-  is_green_power: boolean;
-  status: string;
-  description?: string | null;
-  pricing_config?: Record<string, unknown> | null;
-  created_at: string;
-  updated_at: string;
-}
-
+// 请求输入类（非 DB 实体）保留手写。
 export interface PackageInput {
   package_name: string;
   package_type: string;
@@ -30,21 +20,6 @@ export interface PackageInput {
   status?: string;
   description?: string;
   pricing_config?: Record<string, unknown>;
-}
-
-export interface RetailContract {
-  id: string;
-  customer_id: string;
-  customer_name: string;
-  package_id: string;
-  package_name_snapshot: string;
-  purchasing_energy_mwh: number;
-  green_power_ratio?: number | null;
-  purchase_start_month: string;
-  purchase_end_month: string;
-  status: string;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface ContractInput {
@@ -126,4 +101,66 @@ export async function generateContractPDF(id: string): Promise<{ ok: boolean; mo
     return { ok: true, mode: 'download' };
   }
   return { ok: true, mode: 'minio' };
+}
+
+// ─── P0 结算试算（settlement.Preview，金额经 decimal 以 JSON number 返回）───
+export interface SettleLineItem {
+  label: string;
+  energy_kwh: number;
+  unit_price: number;
+  amount: number;
+}
+export interface RetailSettleResult {
+  mode: string;
+  energy_kwh: number;
+  energy_amount: number;
+  service_amount: number;
+  total_amount: number;
+  avg_unit_price: number;
+  breakdown: SettleLineItem[];
+  capped_unit_price?: number; // 封顶价 元/kWh（仅触发封顶时返回）
+  is_capped: boolean; // 是否因套餐单价 > P封顶 而被压到封顶价结算
+}
+export interface WholesaleSettleResult {
+  total_energy_kwh: number;
+  total_cost: number;
+  avg_price: number;
+}
+export interface SettleProfitResult {
+  revenue: number;
+  cost: number;
+  gross_profit: number;
+  gross_margin: number;
+  unit_spread: number;
+}
+export interface SettlePreviewResult {
+  retail: RetailSettleResult;
+  wholesale?: WholesaleSettleResult;
+  profit?: SettleProfitResult;
+}
+export interface SettlePreviewInput {
+  package_id: string;
+  energy_kwh: number;
+  market_price?: number;
+  period_energy?: Record<string, number>;
+  benchmark_price?: number; // P基准 元/kWh（价差分享套餐 + 封顶价用）
+  purchase_avg_price?: number; // P购电均价 元/kWh（价差分享套餐用）
+  wholesale_avg_price?: number;
+}
+export async function settlePreview(input: SettlePreviewInput): Promise<SettlePreviewResult> {
+  const { data } = await apiClient.post('/api/v1/settlement/preview', input);
+  return data;
+}
+
+// 落库：算并写一条 customer_profit（is_estimate 区分测算/实际）。需 customer_id/月份 + 批发输入。
+export interface SettleSaveInput extends SettlePreviewInput {
+  customer_id: string;
+  operating_month: string;
+  is_estimate: boolean;
+}
+export async function settleAndSave(
+  input: SettleSaveInput,
+): Promise<{ persisted: boolean; is_estimate: boolean; message: string; result: SettlePreviewResult }> {
+  const { data } = await apiClient.post('/api/v1/settlement/settle', input);
+  return data;
 }

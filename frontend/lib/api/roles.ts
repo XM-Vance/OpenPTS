@@ -69,8 +69,3 @@ export async function listPermissions(): Promise<Permission[]> {
   const { data } = await apiClient.get('/api/v1/permissions');
   return data.items;
 }
-
-export async function listModules(): Promise<Module[]> {
-  const { data } = await apiClient.get('/api/v1/modules');
-  return data.items;
-}

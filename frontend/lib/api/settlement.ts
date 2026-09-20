@@ -1,28 +1,15 @@
 import { apiClient } from './client';
+import type {
+  SchemaSettlementDaily,
+  SchemaPeriodDetail,
+  SchemaSettlementDetail,
+} from './types.gen';
 
-export interface SettlementDaily {
-  id: string;
-  operating_date: string;
-  version: string;
-  contract_fee?: number | null;
-  day_ahead_fee?: number | null;
-  real_time_fee?: number | null;
-  total_energy_fee?: number | null;
-  energy_avg_price?: number | null;
-  deviation_recovery_fee?: number | null;
-  created_at: string;
-}
-
-export interface PeriodDetail {
-  period: number;
-  volume_mwh: number;
-  price: number;
-  fee: number;
-}
-
-export interface SettlementDetail extends SettlementDaily {
-  period_details: PeriodDetail[];
-}
+// 实体类型由 OpenAPI 规范生成（与 customers.ts 同模式）。
+// 后端改字段 → `npm run gen-api-types` 重生成 → 此处与页面同步报错。
+export type SettlementDaily = SchemaSettlementDaily;
+export type PeriodDetail = SchemaPeriodDetail;
+export type SettlementDetail = SchemaSettlementDetail;
 
 export async function listSettlements(limit = 30): Promise<{ items: SettlementDaily[] }> {
   const { data } = await apiClient.get('/api/v1/settlement/daily', { params: { limit } });

@@ -7,7 +7,7 @@ import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DemoBadge } from '@/components/feedback';
+import { EmptyState, DemoBadge } from '@/components/feedback';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Table,
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/table';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   ackAlert,
   generateAnalyticsDemoData,
@@ -242,9 +243,7 @@ export default function AnalyticsFeaturesPage() {
               <TableBody>
                 {alertsLoading && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground">
-                      加载中...
-                    </TableCell>
+                    <TableCell colSpan={8}><Skeleton className="h-5 w-full" /></TableCell>
                   </TableRow>
                 )}
                 {alerts?.items.map((a) => (
@@ -295,12 +294,7 @@ export default function AnalyticsFeaturesPage() {
                 ))}
                 {alerts?.items.length === 0 && !alertsLoading && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground">
-                      {includeAcked
-                        ? '暂无告警数据'
-                        : '没有待处理告警 🎉'}
-                      {canWrite && !alerts?.items.length && '，可点右上「生成演示数据」'}
-                    </TableCell>
+                    <TableCell colSpan={8}><EmptyState compact title={<> {includeAcked ? '暂无告警数据' : '没有待处理告警 🎉'} {canWrite && !alerts?.items.length && '，可点右上「生成演示数据」'} </>} /></TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -323,9 +317,7 @@ export default function AnalyticsFeaturesPage() {
                 <FeatureRadar data={radarData.data} customers={radarData.customers} colors={RADAR_COLORS} />
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                暂无特征数据{canWrite ? '，请点右上「生成演示数据」' : ''}
-              </p>
+              <EmptyState compact title={<>暂无特征数据{canWrite ? '，请点右上「生成演示数据」' : ''}</>} />
             )}
           </CardContent>
         </Card>
@@ -343,7 +335,7 @@ export default function AnalyticsFeaturesPage() {
                 <ValueScatter data={scatterData} />
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">暂无数据</p>
+              <EmptyState compact title="暂无数据" />
             )}
             <p className="mt-1 text-xs text-muted-foreground">气泡大小 = 用电量 | X = 收益 | Y = 风险</p>
           </CardContent>
@@ -360,7 +352,7 @@ export default function AnalyticsFeaturesPage() {
                 <IndustryPie data={industryPie} colors={PIE_COLORS} />
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">暂无数据</p>
+              <EmptyState compact title="暂无数据" />
             )}
           </CardContent>
         </Card>
@@ -373,9 +365,7 @@ export default function AnalyticsFeaturesPage() {
         </CardHeader>
         <CardContent>
           {chars?.items.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              暂无特征数据{canWrite ? '，请点右上「生成演示数据」' : ''}
-            </p>
+            <EmptyState compact title={<>暂无特征数据{canWrite ? '，请点右上「生成演示数据」' : ''}</>} />
           ) : (
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {chars?.items.map((ch) => (
@@ -433,9 +423,9 @@ function StatCard({
     tone === 'critical'
       ? 'text-destructive'
       : tone === 'warn'
-        ? 'text-amber-600'
+        ? 'text-amber-700'
         : tone === 'ok'
-          ? 'text-emerald-600'
+          ? 'text-emerald-700'
           : 'text-foreground';
   return (
     <Card>

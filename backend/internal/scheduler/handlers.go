@@ -4,12 +4,98 @@ package scheduler
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/ptis/backend/internal/db"
 	"github.com/rs/zerolog/log"
 )
+
+// resolveScriptPath 解析外部脚本路径：默认值 + env 覆盖 + 白名单目录校验。
+//
+// 历史问题（docs/improvement-roadmap-2026-07.md H-NEW-2）：
+//   - 头注释声称支持 env 覆盖（MARKET_DATA_SCRIPT / WEATHER_SCRIPT），代码实际没读；
+//   - 无白名单 → 若 env 被注入任意路径，可执行 scripts/ 目录之外的脚本。
+//
+// 此函数统一两个外部 exec 点的路径解析：env 真读取 + 必须落在白名单根目录之下
+// （防 `..` 越权）。允许的根由 env PTIS_SCRIPTS_DIR 配置，缺省 scripts/data-collection。
+//
+// 注意：本函数只校验路径合规，不解决容器内是否真有 python3 / 脚本——后者由 Dockerfile
+// 打包（见 PR 同 commit 的 backend/Dockerfile 改动）。
+func resolveScriptPath(envKey, defaultName string) (string, error) {
+	root := os.Getenv("PTIS_SCRIPTS_DIR")
+	if root == "" {
+		root = "scripts/data-collection"
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("解析脚本根目录失败: %w", err)
+	}
+
+	name := defaultName
+	if v := os.Getenv(envKey); v != "" {
+		name = v
+	}
+
+	// 仅取文件名部分（env 注入绝对路径或含目录分隔符一律拒绝），
+	// 强制脚本必须位于白名单根之下，杜绝路径穿越。
+	base := filepath.Base(name)
+	if base == "." || base == string(filepath.Separator) || base == name && name != defaultName && filepath.ToSlash(name) != base {
+		return "", fmt.Errorf("env %s 必须是纯文件名（不含路径分隔符），当前: %q", envKey, name)
+	}
+
+	full := filepath.Join(rootAbs, base)
+	// 二次校验：Clean 后仍需在 rootAbs 之下（防 base 含 `..` 的极端构造）
+	rel, err := filepath.Rel(rootAbs, full)
+	if err != nil || rel == "" || rel == ".." || len(rel) >= 3 && rel[:3] == "../" {
+		return "", fmt.Errorf("脚本路径 %q 不在允许根目录 %q 之下", full, rootAbs)
+	}
+	return full, nil
+}
+
+// runPythonScript 公共执行体：解析路径 → exec python3 → 捕获输出 → 失败带结构化日志。
+// 失败时返回 error，由 scheduler runOne 重试 + 打 metric + 落 job_runs。
+func runPythonScript(ctx context.Context, envKey, defaultName, jobLabel string) error {
+	// PTIS_PY_COLLECT=0：Docker 部署下 backend 容器无 python3，采集由 ptis-fetcher
+	// sidecar 承担（docker-compose 已接线），本任务按配置跳过（记 success，不打 failed 指标）。
+	if os.Getenv("PTIS_PY_COLLECT") == "0" {
+		log.Info().Str("job", jobLabel).
+			Msg(jobLabel + "采集由 fetcher sidecar 承担（PTIS_PY_COLLECT=0），本次跳过")
+		return nil
+	}
+	scriptPath, err := resolveScriptPath(envKey, defaultName)
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, "python3", scriptPath)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		log.Error().
+			Err(err).
+			Str("job", jobLabel).
+			Str("script", scriptPath).
+			Str("stdout", stdout.String()).
+			Str("stderr", stderr.String()).
+			Msg(jobLabel + "采集失败")
+		// 区分「脚本不存在 / python3 不在 PATH」与脚本执行失败：
+		// 前者属环境配置问题（容器未打包），重试无意义但需暴露。
+		var pErr *exec.Error
+		if errors.As(err, &pErr) {
+			return fmt.Errorf("%s: 命令不可用 %q（检查镜像是否打包 python3 + 脚本）: %w", jobLabel, pErr.Name, err)
+		}
+		return fmt.Errorf("%s采集失败: %w", jobLabel, err)
+	}
+	log.Info().Str("job", jobLabel).Str("script", scriptPath).
+		Str("stdout", stdout.String()).
+		Msg(jobLabel + "采集完成")
+	return nil
+}
 
 // CleanupTokens 清理过期登录会话（auth_sessions.expires_at < now()）。
 func CleanupTokens(ctx context.Context, pool *db.Pool) error {
@@ -86,55 +172,21 @@ func ExpireContracts(ctx context.Context, pool *db.Pool) error {
 }
 
 // FetchMarketData 调用外部 AKShare 采集脚本，刷新 30 类市场行情数据（md_* 表）。
-// 脚本路径默认 scripts/data-collection/fetch_market_data.py（相对仓库根 / 容器工作目录），
-// 可用环境变量 MARKET_DATA_SCRIPT 覆盖。采集失败只记日志、不阻塞调度循环。
+// 脚本文件名默认 fetch_market_data.py，位于 PTIS_SCRIPTS_DIR（缺省 scripts/data-collection），
+// 可用环境变量 MARKET_DATA_SCRIPT 覆盖（仅文件名，路径穿越会被拒）。
+// 采集失败：metric + 日志 + job_runs 三路可见，由 scheduler runOne 重试。
 func FetchMarketData(ctx context.Context, pool *db.Pool) error {
-	// pool 在本任务中不直接使用（脚本自行连库），保留入参以满足 JobFunc 签名。
-	_ = pool
-
-	const defaultScript = "scripts/data-collection/fetch_market_data.py"
-	cmd := exec.CommandContext(ctx, "python3", defaultScript)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		log.Error().
-			Err(err).
-			Str("stdout", stdout.String()).
-			Str("stderr", stderr.String()).
-			Msg("市场行情采集失败")
-		return err
-	}
-	log.Info().
-		Str("stdout", stdout.String()).
-		Msg("市场行情采集完成（md_* 表已刷新）")
-	return nil
+	_ = pool // 脚本自行连库，保留入参以满足 JobFunc 签名。
+	return runPythonScript(ctx, "MARKET_DATA_SCRIPT", "fetch_market_data.py", "市场行情")
 }
 
 // FetchWeatherData 调用外部 Open-Meteo 采集脚本，刷新气象原始观测数据
 // （md_weather_wind_hourly 风电场逐时 + md_weather_hydrology_daily 水库水文逐日）。
 // 时序上排在 fetch_weather_actuals(19:00) 之前，保证 ETL 上游数据已就绪。
-// 采集失败只记日志、不阻塞调度循环。与 FetchMarketData 同一 exec 范式。
+// 路径解析同 FetchMarketData（WEATHER_SCRIPT 覆盖 + 白名单根）。
 func FetchWeatherData(ctx context.Context, pool *db.Pool) error {
-	_ = pool // 脚本自行连库，保留入参以满足 JobFunc 签名。
-
-	const defaultScript = "scripts/data-collection/fetch_weather_data.py"
-	cmd := exec.CommandContext(ctx, "python3", defaultScript)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		log.Error().
-			Err(err).
-			Str("stdout", stdout.String()).
-			Str("stderr", stderr.String()).
-			Msg("气象数据采集失败")
-		return err
-	}
-	log.Info().
-		Str("stdout", stdout.String()).
-		Msg("气象数据采集完成（md_weather_* 表已刷新）")
-	return nil
+	_ = pool
+	return runPythonScript(ctx, "WEATHER_SCRIPT", "fetch_weather_data.py", "气象数据")
 }
 
 // FetchWeatherActuals 把 md_weather_hydrology_daily（Open-Meteo 脚本已采）聚合到 weather_actuals。

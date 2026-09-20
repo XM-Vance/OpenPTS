@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useQuery } from '@tanstack/react-query';
 import { getSettlementSummary } from '@/lib/api/dashboard';
+import { ChartLoading } from '@/components/feedback';
 
 const levelConfig: Record<string, { icon: React.ElementType; color: string; variant: 'destructive' | 'outline' | 'secondary' }> = {
   critical: { icon: XCircle, color: 'text-red-500', variant: 'destructive' },
@@ -35,9 +36,7 @@ export default function AlertsPanel() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
-            加载中...
-          </div>
+          <ChartLoading className="h-24" />
         ) : alerts.length > 0 ? (
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {alerts.map((alert) => {

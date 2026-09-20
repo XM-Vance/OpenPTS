@@ -25,7 +25,7 @@ export interface StatCardProps {
 /**
  * 统计数字卡片
  * - 标题 + 数值 + 趋势箭头 + 图标
- * - 趋势正值绿色向上，负值红色向下
+ * - 趋势色遵循国内金融惯例红涨绿跌：正值红色向上，负值绿色向下
  */
 export function StatCard({
   title,
@@ -48,23 +48,23 @@ export function StatCard({
       <CardContent className="flex items-start justify-between p-4">
         <div className="space-y-1">
           <p className="text-sm text-muted-foreground">{title}</p>
-          <p className="text-2xl font-bold leading-none">{value}</p>
+          <p className="text-2xl font-bold tabular-nums leading-none">{value}</p>
           {(trend !== null && trend !== undefined) && (
             <div className="flex items-center gap-1 pt-1">
               {isPositive && (
-                <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
+                <TrendingUp className="h-3.5 w-3.5 text-red-700" />
               )}
               {isNegative && (
-                <TrendingDown className="h-3.5 w-3.5 text-red-500" />
+                <TrendingDown className="h-3.5 w-3.5 text-emerald-700" />
               )}
               {isFlat && (
                 <Minus className="h-3.5 w-3.5 text-muted-foreground" />
               )}
               <span
                 className={cn(
-                  'text-xs font-medium',
-                  isPositive && 'text-emerald-500',
-                  isNegative && 'text-red-500',
+                  'text-xs font-medium tabular-nums',
+                  isPositive && 'text-red-700',
+                  isNegative && 'text-emerald-700',
                   isFlat && 'text-muted-foreground',
                 )}
               >

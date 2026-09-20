@@ -20,6 +20,8 @@ import { useAuth } from '@/lib/auth/context';
 import { listDocuments, type DocumentItem } from '@/lib/api/documents';
 import { FileScan, Loader2 } from 'lucide-react';
 import UploadZone from './components/UploadZone';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/feedback';
 
 const SELECT_CLASS = 'flex h-9 rounded-md border border-input bg-transparent px-3 text-sm';
 const DOC_TYPES = ['合同', '政策', '规则', '账单', '结算单', '资质', '客户清单', '负荷数据', '其他'];
@@ -57,23 +59,24 @@ export default function DocumentsPage() {
 
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [processedFilter, setProcessedFilter] = useState('');
   const [custFilter, setCustFilter] = useState('');
   const [scopeMine, setScopeMine] = useState(false);
 
   const { data: docs, isLoading } = useQuery({
-    queryKey: ['documents', statusFilter, typeFilter, scopeMine],
+    queryKey: ['documents', statusFilter, typeFilter, processedFilter, scopeMine],
     queryFn: () =>
       listDocuments({
         status: statusFilter || undefined,
         doc_type: typeFilter || undefined,
+        processed: (processedFilter || undefined) as 'pending' | 'processed' | undefined,
         limit: 200,
         scope: scopeMine ? 'mine' : undefined,
       }),
-    // 有文档在解析时自动轮询刷新状态
+    // 有文档在「解析中」时自动轮询刷新状态（uploaded 状态的 PDF/图片需等
+    // 外部 agent 处理，不轮询——避免无意义的长轮询）
     refetchInterval: (q) =>
-      (q.state.data ?? []).some((d) => d.status === 'parsing' || d.status === 'uploaded')
-        ? 4000
-        : false,
+      (q.state.data ?? []).some((d) => d.status === 'parsing') ? 4000 : false,
   });
 
   const items: DocumentItem[] = useMemo(() => {
@@ -95,7 +98,7 @@ export default function DocumentsPage() {
             文档解析
           </h1>
           <p className="text-sm text-muted-foreground">
-            PDF / 图片 / Word OCR 识别，Excel / CSV 直读 —— 高置信度数据自动入库，低置信度人工确认
+            Excel / CSV 上传后自动解析；PDF / 图片 / Word 需外部 agent 提交解析结果（解析完在详情页核对字段、确认入库）
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -116,6 +119,11 @@ export default function DocumentsPage() {
             {DOC_TYPES.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
+          </select>
+          <select value={processedFilter} onChange={(e) => setProcessedFilter(e.target.value)} className={SELECT_CLASS}>
+            <option value="">全部（处理）</option>
+            <option value="pending">待处理</option>
+            <option value="processed">已处理</option>
           </select>
           <select value={custFilter} onChange={(e) => setCustFilter(e.target.value)} className={SELECT_CLASS}>
             <option value="">全部文档</option>
@@ -156,7 +164,7 @@ export default function DocumentsPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground">加载中...</TableCell>
+                <TableCell colSpan={9}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {items.map((d) => {
@@ -174,11 +182,14 @@ export default function DocumentsPage() {
                   <TableCell>{d.doc_type ?? '-'}</TableCell>
                   <TableCell>
                     <Badge variant={st.variant} title={d.error ?? undefined}>{st.label}</Badge>
-                    {d.auto_applied && d.status === 'parsed' && (
-                      <Badge variant="success" className="ml-1" title="系统自动入库（置信度达标）">自动入库</Badge>
-                    )}
-                    {!d.auto_applied && d.status === 'parsed' && (
-                      <Badge variant="secondary" className="ml-1" title="需人工确认入库">待确认</Badge>
+                    {d.status === 'parsed' && (
+                      d.applied_count > 0 ? (
+                        <Badge variant="success" className="ml-1" title={`已归档 ${d.applied_count} 次`}>
+                          {d.auto_applied ? '自动入库' : '已入库'}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="ml-1" title="尚未归档到业务表">待处理</Badge>
+                      )
                     )}
                   </TableCell>
                   <TableCell className="text-right">{d.page_count || '-'}</TableCell>
@@ -205,9 +216,7 @@ export default function DocumentsPage() {
             })}
             {items.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground">
-                  暂无文档{canWrite && '，请上传 PDF / 图片 / Word / Excel'}
-                </TableCell>
+                <TableCell colSpan={9}><EmptyState compact title={<> 暂无文档{canWrite && '，请上传 PDF / 图片 / Word / Excel'} </>} /></TableCell>
               </TableRow>
             )}
           </TableBody>

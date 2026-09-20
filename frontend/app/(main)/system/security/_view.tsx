@@ -28,6 +28,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { getSecurityOverview } from '@/lib/api/security';
+import { EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const HOURS_OPTIONS = [
   { value: 1, label: '近 1 时' },
@@ -95,40 +97,7 @@ function GaugeChart({ value, label }: { value: number; label: string }) {
   );
 }
 
-/* ---------- 模拟异常登录数据 ---------- */
-interface AnomalyLogin {
-  id: number;
-  username: string;
-  time: string;
-  ip: string;
-  location: string;
-  type: '异地登录' | '频率异常' | '非常规时间';
-}
-
-const MOCK_ANOMALY_LOGINS: AnomalyLogin[] = [
-  { id: 1, username: 'admin', time: '2026-06-05 03:21', ip: '103.45.67.89', location: '新加坡', type: '异地登录' },
-  { id: 2, username: 'operator1', time: '2026-06-05 08:45', ip: '192.168.1.100', location: '北京', type: '频率异常' },
-  { id: 3, username: 'trader2', time: '2026-06-04 23:58', ip: '45.67.89.12', location: '上海', type: '非常规时间' },
-  { id: 4, username: 'admin', time: '2026-06-04 02:15', ip: '78.12.34.56', location: '莫斯科', type: '异地登录' },
-  { id: 5, username: 'analyst1', time: '2026-06-04 14:30', ip: '192.168.1.55', location: '北京', type: '频率异常' },
-];
-
-/* ---------- 模拟安全事件趋势 ---------- */
-const MOCK_SECURITY_TREND = [
-  { date: '05-30', events: 2, anomalies: 0 },
-  { date: '05-31', events: 5, anomalies: 1 },
-  { date: '06-01', events: 3, anomalies: 0 },
-  { date: '06-02', events: 8, anomalies: 2 },
-  { date: '06-03', events: 4, anomalies: 1 },
-  { date: '06-04', events: 12, anomalies: 4 },
-  { date: '06-05', events: 6, anomalies: 2 },
-];
-
-function anomalyType(type: AnomalyLogin['type']): string {
-  if (type === '异地登录') return 'destructive';
-  if (type === '频率异常') return 'default';
-  return 'secondary';
-}
+/* ---------- 异常登录检测：后端暂无数据源，不展示伪造记录 ---------- */
 
 export default function SecurityPage() {
   const [hours, setHours] = useState(24);
@@ -144,9 +113,9 @@ export default function SecurityPage() {
     count: p.count,
   }));
 
-  /* 计算系统健康度 */
+  /* 计算系统健康度（无数据时显示加载态，不编造分数） */
   const healthScore = (() => {
-    if (!data) return 85;
+    if (!data) return null;
     const total = data.total || 1;
     const errorRate = ((data.errors_4xx + data.errors_5xx) / total) * 100;
     const deleteRate = (data.delete_ops / total) * 100;
@@ -154,11 +123,6 @@ export default function SecurityPage() {
     if (data.failed_sched_jobs > 0) score -= data.failed_sched_jobs * 5;
     return Math.round(Math.min(100, Math.max(0, score)));
   })();
-
-  /* 安全事件趋势数据：优先使用真实数据，不足时使用模拟 */
-  const trendData = chartData.length >= 5
-    ? chartData.map((d) => ({ date: d.hour, events: d.count, anomalies: Math.round(d.count * 0.3) }))
-    : MOCK_SECURITY_TREND;
 
   return (
     <div className="space-y-4">
@@ -169,7 +133,7 @@ export default function SecurityPage() {
             异常聚合监控：4xx/5xx 错误、敏感操作、用户/IP 排行
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {HOURS_OPTIONS.map((o) => (
             <Button
               key={o.value}
@@ -186,7 +150,7 @@ export default function SecurityPage() {
       <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-7">
         {[
           { label: '请求总数', value: data?.total ?? 0, tone: 'text-foreground' },
-          { label: '4xx 错误', value: data?.errors_4xx ?? 0, tone: 'text-amber-600' },
+          { label: '4xx 错误', value: data?.errors_4xx ?? 0, tone: 'text-amber-700' },
           { label: '5xx 错误', value: data?.errors_5xx ?? 0, tone: 'text-destructive' },
           { label: 'DELETE', value: data?.delete_ops ?? 0, tone: 'text-orange-600' },
           { label: '活跃用户', value: data?.unique_users ?? 0, tone: 'text-blue-600' },
@@ -210,113 +174,35 @@ export default function SecurityPage() {
             <CardTitle className="text-base">系统健康度</CardTitle>
           </CardHeader>
           <CardContent className="flex justify-center">
-            <GaugeChart value={healthScore} label="综合健康评分" />
+            {healthScore == null ? (
+              <Skeleton className="h-5 w-full" />
+            ) : (
+              <GaugeChart value={healthScore} label="综合健康评分" />
+            )}
           </CardContent>
         </Card>
 
-        {/* 异常登录检测面板 */}
+        {/* 异常登录检测面板：后端暂无数据源，展示空态而非伪造记录 */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">异常登录检测</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>用户</TableHead>
-                    <TableHead>时间</TableHead>
-                    <TableHead>IP</TableHead>
-                    <TableHead>位置</TableHead>
-                    <TableHead>类型</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {MOCK_ANOMALY_LOGINS.map((r) => (
-                    <TableRow
-                      key={r.id}
-                      className={
-                        r.type === '异地登录'
-                          ? 'bg-red-50 dark:bg-red-950/30'
-                          : r.type === '频率异常'
-                            ? 'bg-amber-50 dark:bg-amber-950/30'
-                            : ''
-                      }
-                    >
-                      <TableCell className="font-medium">{r.username}</TableCell>
-                      <TableCell className="whitespace-nowrap text-xs">{r.time}</TableCell>
-                      <TableCell>
-                        <code className="text-xs">{r.ip}</code>
-                      </TableCell>
-                      <TableCell className="text-sm">{r.location}</TableCell>
-                      <TableCell>
-                        <Badge variant={anomalyType(r.type) as 'destructive' | 'default' | 'secondary'}>
-                          {r.type}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            <EmptyState compact title="暂无异常登录检测数据（该功能依赖登录审计数据源，建设中）。" />
           </CardContent>
         </Card>
       </div>
 
-      {/* ========== 安全事件趋势折线图 ========== */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">安全事件趋势</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">加载中...</p>
-          ) : (
-            <div
-              className="[&_.recharts-surface:focus]:outline-none"
-              style={{ width: '100%', height: 260 }}
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trendData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6b7280' }} />
-                  <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={40} />
-                  <Tooltip contentStyle={{ fontSize: 12 }} />
-                  <Area
-                    type="monotone"
-                    dataKey="events"
-                    name="安全事件"
-                    stroke="#6366f1"
-                    fill="#e0e7ff"
-                    strokeWidth={2}
-                    isAnimationActive={false}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="anomalies"
-                    name="异常行为"
-                    stroke="#ef4444"
-                    fill="#fecaca"
-                    strokeWidth={2}
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ========== 每小时错误数趋势（保留原有） ========== */}
+      {/* ========== 每小时错误数趋势（真实数据） ========== */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">每小时错误数趋势</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">加载中...</p>
+            <Skeleton className="h-5 w-full" />
           ) : chartData.length === 0 ? (
-            <p className="text-sm text-muted-foreground">暂无错误（🎉）</p>
+            <EmptyState compact title="暂无错误（🎉）" />
           ) : (
             <div
               className="[&_.recharts-surface:focus]:outline-none"
@@ -324,9 +210,9 @@ export default function SecurityPage() {
             >
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#6b7280' }} />
-                  <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={40} />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="hour" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 12 }} width={40} />
                   <Tooltip contentStyle={{ fontSize: 12 }} />
                   <Area
                     type="monotone"
@@ -371,7 +257,7 @@ export default function SecurityPage() {
           </CardHeader>
           <CardContent>
             {(data?.top_active_ips ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">暂无</p>
+              <EmptyState compact title="暂无" />
             ) : (
               <ul className="space-y-2">
                 {(data?.top_active_ips ?? []).map((i) => (
@@ -421,9 +307,7 @@ export default function SecurityPage() {
                 ))}
                 {(data?.recent_deletes ?? []).length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground">
-                      暂无 DELETE 操作
-                    </TableCell>
+                    <TableCell colSpan={5}><EmptyState compact title="暂无 DELETE 操作" /></TableCell>
                   </TableRow>
                 )}
               </TableBody>

@@ -31,6 +31,7 @@ import { StatCard } from '@/components/data-display/stat-card';
 import { ChartContainer } from '@/components/charts/chart-container';
 import { CustomTooltip } from '@/components/charts/custom-tooltip';
 import { DataTable, type DataTableColumn, type DataRow } from '@/components/data-display/data-table';
+import type { MobileCardField } from '@/components/data-display/mobile-card-list';
 import { PageHeader } from '@/components/data-display/page-header';
 import { Label } from '@/components/ui/label';
 import {
@@ -47,6 +48,7 @@ import {
   ArrowRightLeft,
   ShieldAlert,
 } from 'lucide-react';
+import { EmptyState } from '@/components/feedback';
 
 // ─── 常量 ───
 
@@ -152,42 +154,47 @@ export default function SettlementDailyPage() {
   }, [listData]);
 
   // ── Sprint 3：瀑布图数据 ──
+  // 业务审查第二轮修正：本页是批发侧日结算（合同/日前/实时均为购电成本组成），
+  // 旧版把"批发合同费用"当售电收入、把 |日前|+|实时| 当偏差考核费——成本组成被重复
+  // 计入考核费（线上曾显示考核费 7779 万 > 批发总费用 3861 万）。改为批发侧成本构成瀑布。
   const waterfallData = useMemo(() => {
     if (!summary) return [];
-    const purchaseCost = summary.totalEnergyFee || 0;
-    const contractIncome = summary.totalContractFee || 0;
-    const deviationFee = Math.abs(summary.totalDAFee || 0) + Math.abs(summary.totalRTFee || 0);
-    const net = contractIncome - purchaseCost;
+    const contractFee = summary.totalContractFee || 0;
+    const daFee = summary.totalDAFee || 0;
+    const rtFee = summary.totalRTFee || 0;
+    const devFee = summary.totalDeviationFee || 0;
+    const total = contractFee + daFee + rtFee;
 
     return [
-      { name: '购电成本', base: 0, amount: purchaseCost, fill: '#ef4444' },
-      { name: '售电收入', base: purchaseCost, amount: contractIncome, fill: '#10b981' },
-      { name: '偏差考核', base: purchaseCost + contractIncome, amount: -deviationFee, fill: '#f59e0b' },
+      { name: '合同电费', base: 0, amount: contractFee, fill: '#2563eb' },
+      { name: '日前偏差电费', base: contractFee, amount: daFee, fill: '#f59e0b' },
+      { name: '实时偏差电费', base: contractFee + daFee, amount: rtFee, fill: '#10b981' },
+      { name: '偏差考核费', base: total, amount: devFee, fill: '#ef4444' },
       {
-        name: '净收益',
+        name: '批发侧总支出',
         base: 0,
-        amount: net,
-        fill: net >= 0 ? '#3b82f6' : '#dc2626',
+        amount: total + devFee,
+        fill: total + devFee >= 0 ? '#3b82f6' : '#dc2626',
       },
     ];
   }, [summary]);
 
-  // ── Sprint 3：全景看板数据 ──
+  // ── Sprint 3：全景看板数据（批发侧口径）──
+  // 旧版"零售侧预估=合同费用×1.08、净收益/利润率"无业务依据（合同费用是批发成本项，
+  // 不代表零售收入），已移除；改为批发侧可从本页数据诚实计算的指标。
   const panoramaData = useMemo(() => {
     if (!summary) return null;
     const wholesale = summary.totalEnergyFee || 0;
     const contract = summary.totalContractFee || 0;
-    const deviation = (summary.totalDAFee || 0) + (summary.totalRTFee || 0);
-    // 零售侧估算：合同费用 * 1.08（含零售加价）
-    const retailEstimate = contract * 1.08;
-    const profitMargin = retailEstimate > 0 ? ((retailEstimate - wholesale) / retailEstimate) * 100 : 0;
-
+    const spotDeviation = (summary.totalDAFee || 0) + (summary.totalRTFee || 0);
+    const assessFee = summary.totalDeviationFee || 0;
+    const contractRatio = wholesale > 0 ? (contract / wholesale) * 100 : 0;
     return {
       wholesale,
-      retailEstimate,
-      deviation,
-      netResult: retailEstimate - wholesale - Math.abs(deviation),
-      profitMargin,
+      contract,
+      spotDeviation,
+      assessFee,
+      contractRatio,
     };
   }, [summary]);
 
@@ -308,7 +315,7 @@ export default function SettlementDailyPage() {
         if (v == null) return <span className="text-muted-foreground">-</span>;
         const isWarning = Math.abs(v) > DEVIATION_FEE_THRESHOLD;
         return (
-          <span className={isWarning ? 'font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded' : ''}>
+          <span className={isWarning ? 'font-bold text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/15 px-1.5 py-0.5 rounded' : ''}>
             {fmtMoney(v)}
             {isWarning && ' ⚠'}
           </span>
@@ -327,7 +334,7 @@ export default function SettlementDailyPage() {
           <Button
             variant="ghost"
             size="sm"
-            className={`h-auto p-1 gap-1 text-xs ${verified ? 'text-emerald-600' : 'text-muted-foreground'}`}
+            className={`h-auto p-1 gap-1 text-xs ${verified ? 'text-emerald-700' : 'text-muted-foreground'}`}
             onClick={() => toggleVerified(id)}
           >
             {verified ? (
@@ -341,6 +348,39 @@ export default function SettlementDailyPage() {
                 未核对
               </>
             )}
+          </Button>
+        );
+      },
+    },
+  ];
+
+  // 移动端卡片字段（窄屏替代 9 列宽表；保留日期/核对交互）
+  const mobileCardFields: MobileCardField<DataRow>[] = [
+    {
+      primary: true,
+      render: (row) => {
+        const date = (row.operating_date as string)?.slice(0, 10);
+        return (
+          <Button variant="link" className="h-auto p-0 font-medium" onClick={() => setSelectedDate(date)}>
+            {date}
+          </Button>
+        );
+      },
+    },
+    { label: '版本', render: (row) => <Badge variant="outline">{row.version as string}</Badge> },
+    { label: '总电费', emphasize: true, render: (row) => <span className="font-semibold">{fmtMoney(row.total_energy_fee as number | null)}</span> },
+    { label: '合同', render: (row) => fmtMoney(row.contract_fee as number | null) },
+    { label: '日前', render: (row) => fmtMoney(row.day_ahead_fee as number | null) },
+    { label: '实时', render: (row) => fmtMoney(row.real_time_fee as number | null) },
+    { label: '均价', render: (row) => { const v = row.energy_avg_price as number | null; return v != null ? fmt(v, 2) : '-'; } },
+    {
+      label: '核对',
+      render: (row) => {
+        const id = row.id as string;
+        const verified = verifiedSet.has(id);
+        return (
+          <Button variant="ghost" size="sm" className={`h-auto p-1 gap-1 text-xs ${verified ? 'text-emerald-700' : 'text-muted-foreground'}`} onClick={() => toggleVerified(id)}>
+            {verified ? '✓ 已核对' : '未核对'}
           </Button>
         );
       },
@@ -379,40 +419,36 @@ export default function SettlementDailyPage() {
         </Alert>
       )}
 
-      {/* ── Sprint 3：结算全景看板 ── */}
+      {/* ── Sprint 3：结算全景看板（批发侧口径；零售收入属零售月结批次，不在本页造数）── */}
       {panoramaData && (
-        <Card className="border-blue-200 bg-gradient-to-r from-blue-50/50 to-indigo-50/50">
+        <Card className="border-blue-200 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 dark:border-blue-500/30 dark:from-blue-500/10 dark:to-indigo-500/10">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
-              <ArrowRightLeft className="h-4 w-4 text-blue-600" />
-              结算全景看板 · 批发侧 vs 零售侧
+              <ArrowRightLeft className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              结算全景看板 · 批发侧费用结构
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-5">
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground">批发侧总费用</p>
-                <p className="text-lg font-bold text-red-600">¥ {fmtMoney(panoramaData.wholesale)}</p>
+                <p className="text-lg font-bold text-red-700 dark:text-red-400">¥ {fmtMoney(panoramaData.wholesale)}</p>
               </div>
               <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">零售侧预估收入</p>
-                <p className="text-lg font-bold text-emerald-600">¥ {fmtMoney(panoramaData.retailEstimate)}</p>
+                <p className="text-xs text-muted-foreground">合同电费（占比 {panoramaData.contractRatio.toFixed(1)}%）</p>
+                <p className="text-lg font-bold text-blue-600 dark:text-blue-400">¥ {fmtMoney(panoramaData.contract)}</p>
               </div>
               <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">偏差考核费用</p>
-                <p className="text-lg font-bold text-orange-600">¥ {fmtMoney(panoramaData.deviation)}</p>
+                <p className="text-xs text-muted-foreground">现货偏差电费（日前+实时）</p>
+                <p className="text-lg font-bold text-amber-700 dark:text-amber-400">¥ {fmtMoney(panoramaData.spotDeviation)}</p>
               </div>
               <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">净收益</p>
-                <p className={`text-lg font-bold ${panoramaData.netResult >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                  ¥ {fmtMoney(panoramaData.netResult)}
-                </p>
+                <p className="text-xs text-muted-foreground">偏差考核费</p>
+                <p className="text-lg font-bold text-orange-700 dark:text-orange-400">¥ {fmtMoney(panoramaData.assessFee)}</p>
               </div>
               <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">预估利润率</p>
-                <p className={`text-lg font-bold ${panoramaData.profitMargin >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                  {panoramaData.profitMargin.toFixed(1)}%
-                </p>
+                <p className="text-xs text-muted-foreground">综合购电均价 (¥/MWh)</p>
+                <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{summary ? fmt(summary.avgPrice, 2) : '-'}</p>
               </div>
             </div>
           </CardContent>
@@ -421,7 +457,7 @@ export default function SettlementDailyPage() {
 
       {/* 偏差费用超标预警条 */}
       {deviationWarningCount > 0 && (
-        <Alert className="border-orange-300 bg-orange-50">
+        <Alert className="border-orange-300 dark:border-orange-500/30 bg-orange-50 dark:bg-orange-500/15">
           <ShieldAlert className="h-4 w-4 text-orange-600" />
           <AlertDescription className="text-orange-800">
             <span className="font-semibold">{deviationWarningCount}</span> 天偏差费用超过 ¥{fmtMoney(DEVIATION_FEE_THRESHOLD)} 预警阈值
@@ -456,7 +492,7 @@ export default function SettlementDailyPage() {
                     const d = payload[0]?.payload as (typeof waterfallData)[number];
                     if (!d) return null;
                     return (
-                      <div className="rounded-md border bg-white px-3 py-2 text-xs shadow-lg">
+                      <div className="rounded-md border bg-popover text-popover-foreground px-3 py-2 text-xs shadow-lg">
                         <p className="font-semibold">{d.name}</p>
                         <p>金额: ¥ {fmtMoney(Math.abs(d.amount))}</p>
                         <p className="text-muted-foreground">
@@ -480,7 +516,7 @@ export default function SettlementDailyPage() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无数据</div>
+            <EmptyState compact className="h-full" title="暂无数据" />
           )}
         </ChartContainer>
 
@@ -497,7 +533,7 @@ export default function SettlementDailyPage() {
                     if (!active || !payload?.length) return null;
                     const d = payload[0].payload as any;
                     return (
-                      <div className="rounded-md border bg-white px-3 py-2 text-xs shadow-lg">
+                      <div className="rounded-md border bg-popover text-popover-foreground px-3 py-2 text-xs shadow-lg">
                         <p className="font-semibold">{d.name}</p>
                         <p>¥ {fmtMoney(d.value)}</p>
                       </div>
@@ -512,7 +548,7 @@ export default function SettlementDailyPage() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无数据</div>
+            <EmptyState compact className="h-full" title="暂无数据" />
           )}
         </ChartContainer>
       </div>
@@ -532,7 +568,7 @@ export default function SettlementDailyPage() {
             </ComposedChart>
           </ResponsiveContainer>
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无趋势数据</div>
+          <EmptyState compact className="h-full" title="暂无趋势数据" />
         )}
       </ChartContainer>
 
@@ -546,7 +582,7 @@ export default function SettlementDailyPage() {
               {listData?.items?.length ?? 0} 条记录
             </span>
             {verifiedSet.size > 0 && (
-              <Badge variant="outline" className="ml-2 text-[10px] text-emerald-600 border-emerald-300">
+              <Badge variant="outline" className="ml-2 text-[10px] text-emerald-700 border-emerald-300">
                 已核对 {verifiedSet.size} 条
               </Badge>
             )}
@@ -560,6 +596,7 @@ export default function SettlementDailyPage() {
             pageSize={10}
             showPagination
             loading={listLoading}
+            mobileCardFields={mobileCardFields}
           />
         </CardContent>
       </Card>

@@ -19,6 +19,8 @@ import { ChartContainer } from '@/components/charts/chart-container';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
 import { genTOUDemo, listTOURules, type TOURule } from '@/lib/api/tou';
+import { EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const TAG_COLOR: Record<string, string> = {
   peak: '#f59e0b',
@@ -148,9 +150,7 @@ export default function TOURulesPage() {
         </CardHeader>
         <CardContent>
           {rules.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              暂无 TOU 规则{canWrite && '，可点右上「生成演示规则」'}
-            </p>
+            <EmptyState compact title={<>暂无 TOU 规则{canWrite && '，可点右上「生成演示规则」'}</>} />
           ) : (
             rules.map((r) => <RuleBar key={r.id} rule={r} />)
           )}
@@ -164,7 +164,7 @@ export default function TOURulesPage() {
         </CardHeader>
         <CardContent>
           {rules.length === 0 ? (
-            <p className="text-sm text-muted-foreground">暂无规则变更记录</p>
+            <EmptyState compact title="暂无规则变更记录" />
           ) : (
             <div className="space-y-4">
               {rules.map((r) => {
@@ -219,9 +219,7 @@ export default function TOURulesPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={6}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {rules.map((r) => {
@@ -255,9 +253,7 @@ export default function TOURulesPage() {
             })}
             {rules.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  暂无规则
-                </TableCell>
+                <TableCell colSpan={6}><EmptyState compact title="暂无规则" /></TableCell>
               </TableRow>
             )}
           </TableBody>

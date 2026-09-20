@@ -29,6 +29,8 @@ import { ChartContainer } from '@/components/charts/chart-container';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
 import { genPreSettleDemo, listPreSettle, type PreSettleDaily } from '@/lib/api/pre-settle';
+import { EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const fmt = (v: number) => v.toLocaleString('zh-CN', { maximumFractionDigits: 1 });
 const wan = (v: number) => (v / 10000).toLocaleString('zh-CN', { maximumFractionDigits: 2 });
@@ -166,7 +168,7 @@ export default function PreSettlementPage() {
               className={`mt-1 text-2xl font-bold ${
                 selected && Math.abs(selected.deviation_ratio) > DEVIATION_THRESHOLD
                   ? 'text-destructive'
-                  : 'text-emerald-600'
+                  : 'text-emerald-700'
               }`}
             >
               {selected ? (selected.deviation_ratio * 100).toFixed(2) + '%' : '-'}
@@ -179,7 +181,7 @@ export default function PreSettlementPage() {
         <Card>
           <CardContent className="pt-6">
             <p className="text-xs text-muted-foreground">最终结算（万元）</p>
-            <p className="mt-1 text-2xl font-bold text-amber-600">
+            <p className="mt-1 text-2xl font-bold text-amber-700">
               {selected ? wan(selected.final_amount) : '-'}
             </p>
           </CardContent>
@@ -204,26 +206,24 @@ export default function PreSettlementPage() {
       {/* 预结算 vs 最终结算差异对比双线图 */}
       <ChartContainer title="预结算 vs 最终结算差异对比">
         {comparisonData.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {canWrite ? '请点右上「生成演示数据」' : '暂无数据'}
-          </p>
+          <EmptyState compact title={<>{canWrite ? '请点右上「生成演示数据」' : '暂无数据'}</>} />
         ) : (
           <ResponsiveContainer width="100%" height={300}>
             <ComposedChart
               data={comparisonData}
               margin={{ top: 8, right: 30, left: 0, bottom: 0 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} />
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
               <YAxis
                 yAxisId="amount"
-                tick={{ fontSize: 12, fill: '#6b7280' }}
+                tick={{ fontSize: 12 }}
                 width={70}
               />
               <YAxis
                 yAxisId="rate"
                 orientation="right"
-                tick={{ fontSize: 12, fill: '#6b7280' }}
+                tick={{ fontSize: 12 }}
                 width={60}
                 unit="%"
               />
@@ -286,18 +286,18 @@ export default function PreSettlementPage() {
       {/* 预结算准确率趋势折线图 */}
       <ChartContainer title="预结算准确率趋势">
         {accuracyData.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无数据</p>
+          <EmptyState compact title="暂无数据" />
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <ComposedChart
               data={accuracyData}
               margin={{ top: 8, right: 30, left: 0, bottom: 0 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} />
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
               <YAxis
                 yAxisId="acc"
-                tick={{ fontSize: 12, fill: '#6b7280' }}
+                tick={{ fontSize: 12 }}
                 width={60}
                 unit="%"
                 domain={[80, 100]}
@@ -305,7 +305,7 @@ export default function PreSettlementPage() {
               <YAxis
                 yAxisId="dev"
                 orientation="right"
-                tick={{ fontSize: 12, fill: '#6b7280' }}
+                tick={{ fontSize: 12 }}
                 width={60}
                 unit="%"
               />
@@ -348,9 +348,7 @@ export default function PreSettlementPage() {
         </CardHeader>
         <CardContent>
           {chartData.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {canWrite ? '请点右上「生成演示数据」' : '暂无数据'}
-            </p>
+            <EmptyState compact title={<>{canWrite ? '请点右上「生成演示数据」' : '暂无数据'}</>} />
           ) : (
             <div
               className="[&_.recharts-surface:focus]:outline-none"
@@ -358,18 +356,18 @@ export default function PreSettlementPage() {
             >
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ top: 8, right: 30, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="period" tick={{ fontSize: 10, fill: '#6b7280' }} interval={11} />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="period" tick={{ fontSize: 10 }} interval={11} />
                   <YAxis
                     yAxisId="left"
-                    tick={{ fontSize: 12, fill: '#6b7280' }}
+                    tick={{ fontSize: 12 }}
                     width={60}
                     unit=" MW"
                   />
                   <YAxis
                     yAxisId="right"
                     orientation="right"
-                    tick={{ fontSize: 12, fill: '#6b7280' }}
+                    tick={{ fontSize: 12 }}
                     width={60}
                     unit=" 元"
                   />
@@ -429,9 +427,7 @@ export default function PreSettlementPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={8}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {items.map((it) => (
@@ -439,7 +435,7 @@ export default function PreSettlementPage() {
                 key={it.id}
                 className={
                   selected?.id === it.id
-                    ? 'cursor-pointer bg-amber-50 ring-1 ring-amber-300'
+                    ? 'cursor-pointer bg-amber-50 dark:bg-amber-500/15 ring-1 ring-amber-300 dark:ring-amber-500/40'
                     : 'cursor-pointer hover:bg-muted/50'
                 }
                 onClick={() => setSelected(it)}
@@ -462,16 +458,14 @@ export default function PreSettlementPage() {
                 <TableCell className="text-right text-destructive">
                   {wan(it.deviation_penalty)}
                 </TableCell>
-                <TableCell className="text-right font-bold text-amber-600">
+                <TableCell className="text-right font-bold text-amber-700">
                   {wan(it.final_amount)}
                 </TableCell>
               </TableRow>
             ))}
             {items.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  暂无预结算数据
-                </TableCell>
+                <TableCell colSpan={8}><EmptyState compact title="暂无预结算数据" /></TableCell>
               </TableRow>
             )}
           </TableBody>

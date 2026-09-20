@@ -53,3 +53,13 @@ func respondOrgErr(c *gin.Context, err error) bool {
 	}
 	return false
 }
+
+// respondBadGateway 便捷：502 + 通用「上游不可用」文案（不泄露 err 细节）。
+// 用于调 algo-service / 外部服务失败时，避免把内网地址 / 上游响应体泄露给前端。
+// 调用方应同时 log 原始 err。
+func respondBadGateway(c *gin.Context, msg string) {
+	if msg == "" {
+		msg = "算法服务暂时不可用，请稍后重试"
+	}
+	c.JSON(http.StatusBadGateway, gin.H{"error": msg})
+}

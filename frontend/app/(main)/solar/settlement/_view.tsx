@@ -18,7 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DemoBadge } from '@/components/feedback';
+import { ChartLoading, EmptyState, DemoBadge } from '@/components/feedback';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import {
@@ -29,8 +29,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { MobileCardList, type MobileCardField, type MobileRow } from '@/components/data-display/mobile-card-list';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   type SolarStation,
   type SolarRevenue,
@@ -98,6 +101,15 @@ export default function SolarSettlementPage() {
   );
 
   const items = useMemo(() => revenueData?.items ?? [], [revenueData]);
+  const isMobile = useIsMobile();
+  const settleMobileFields: MobileCardField<MobileRow>[] = [
+    { primary: true, render: (r) => <span className="font-medium">{(r as any).settlement_month}</span> },
+    { label: '净收益', emphasize: true, render: (r) => <span className="font-semibold">{fmt((r as any).net_income)}</span> },
+    { label: '电费收入', emphasize: true, render: (r) => <span className="font-medium">{fmt((r as any).revenue)}</span> },
+    { label: '发电量', render: (r) => `${fmt((r as any).energy_kwh, 0)} kWh` },
+    { label: '均价', render: (r) => fmt((r as any).avg_price, 4) },
+    { label: '补贴', render: (r) => fmt((r as any).subsidy) },
+  ];
 
   // ── Chart 1: 收益构成堆叠柱状图（上网电价 + 补贴 + 绿证模拟）──
   const stackedData = useMemo(
@@ -153,9 +165,9 @@ export default function SolarSettlementPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">光伏收益结算</h1>
+          <h1 className="text-2xl font-bold">发电结算</h1>
           <p className="text-sm text-muted-foreground">
-            光伏电站月度结算收入、补贴与净收益
+            电站月度结算收入、补贴与净收益
           </p>
         </div>
         {canWrite && (
@@ -271,7 +283,7 @@ export default function SolarSettlementPage() {
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">暂无数据</p>
+                  <EmptyState compact title="暂无数据" />
                 )}
               </CardContent>
             </Card>
@@ -310,7 +322,7 @@ export default function SolarSettlementPage() {
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">暂无排行数据</p>
+                  <EmptyState compact title="暂无排行数据" />
                 )}
               </CardContent>
             </Card>
@@ -353,7 +365,7 @@ export default function SolarSettlementPage() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">累计净收益</p>
-                      <p className="text-lg font-semibold text-emerald-600">
+                      <p className="text-lg font-semibold text-emerald-700">
                         ¥{paybackData.totalIncome.toLocaleString()}
                       </p>
                     </div>
@@ -374,6 +386,15 @@ export default function SolarSettlementPage() {
                 <CardTitle className="text-base">月度结算明细</CardTitle>
               </CardHeader>
               <CardContent>
+                {isMobile ? (
+                  revenueLoading ? (
+                    <ChartLoading className="py-8" />
+                  ) : items.length === 0 ? (
+                    <EmptyState compact className="py-8" title="暂无结算数据" />
+                  ) : (
+                    <MobileCardList items={items as unknown as MobileRow[]} itemKey={(r) => String((r as any).id)} fields={settleMobileFields} />
+                  )
+                ) : (
                 <div className="rounded-lg border">
                   <Table>
                     <TableHeader>
@@ -389,9 +410,7 @@ export default function SolarSettlementPage() {
                     <TableBody>
                       {revenueLoading && (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center text-muted-foreground">
-                            加载中...
-                          </TableCell>
+                          <TableCell colSpan={6}><Skeleton className="h-5 w-full" /></TableCell>
                         </TableRow>
                       )}
                       {items.map((r) => (
@@ -414,14 +433,13 @@ export default function SolarSettlementPage() {
                       ))}
                       {items.length === 0 && !revenueLoading && (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center text-muted-foreground">
-                            暂无结算数据
-                          </TableCell>
+                          <TableCell colSpan={6}><EmptyState compact title="暂无结算数据" /></TableCell>
                         </TableRow>
                       )}
                     </TableBody>
                   </Table>
                 </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -429,9 +447,7 @@ export default function SolarSettlementPage() {
       ) : (
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">
-              暂无光伏站点{canWrite ? '，请点右上「生成演示数据」' : ''}
-            </p>
+            <EmptyState compact title={<>暂无电站{canWrite ? '，请点右上「生成演示数据」' : ''}</>} />
           </CardContent>
         </Card>
       )}

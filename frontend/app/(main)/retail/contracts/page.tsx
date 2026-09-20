@@ -17,6 +17,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dropdown } from '@/components/ui/dropdown';
+import { MobileCardList, type MobileCardField, type MobileRow } from '@/components/data-display/mobile-card-list';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { RetailTabs } from '@/components/retail/retail-tabs';
 import { AttachmentPanel } from '@/components/attachments/attachment-panel';
 import { ChartContainer } from '@/components/charts/chart-container';
@@ -41,6 +44,8 @@ import {
 } from '@/lib/api/retail';
 import { listCustomers, searchCustomersAllOrg, type Customer } from '@/lib/api/customers';
 import { takeContractPrefill, type ContractPrefill } from '@/lib/contract-prefill';
+import { ChartLoading, EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const STATUS_LABEL: Record<string, string> = {
   active: '生效中',
@@ -57,8 +62,8 @@ function getExpiryClass(endMonth: string, status: string): string {
   const end = new Date(endMonth + '-28');
   const now = new Date();
   const diffDays = (end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-  if (diffDays <= 7) return 'bg-red-50';
-  if (diffDays <= 30) return 'bg-yellow-50';
+  if (diffDays <= 7) return 'bg-red-50 dark:bg-red-500/15';
+  if (diffDays <= 30) return 'bg-yellow-50 dark:bg-yellow-500/15';
   return '';
 }
 
@@ -84,7 +89,28 @@ export default function RetailContractsPage() {
   const [prefill, setPrefill] = useState<ContractPrefill | null>(null);
   const [filesFor, setFilesFor] = useState<RetailContract | null>(null);
   const [approvalFor, setApprovalFor] = useState<RetailContract | null>(null);
-
+  const isMobile = useIsMobile();
+  // 移动端合同卡片字段（编辑主按钮，附件/变更/PDF/删除收「⋯」）
+  const contractMobileFields: MobileCardField<MobileRow>[] = [
+    {
+      primary: true,
+      render: (ct) => {
+        const c = ct as any;
+        const expiryBadge = getExpiryBadge(c.purchase_end_month, c.status);
+        return (
+          <span>
+            <span className="font-medium text-blue-600">{c.customer_name}</span>
+            {expiryBadge && <Badge variant={expiryBadge.variant} className="ml-2 text-[10px] px-1.5 py-0">{expiryBadge.text}</Badge>}
+          </span>
+        );
+      },
+    },
+    { label: '状态', render: (ct) => <Badge variant={(ct as any).status === 'active' ? 'success' : 'secondary'}>{STATUS_LABEL[(ct as any).status] || (ct as any).status}</Badge> },
+    { label: '套餐', render: (ct) => (ct as any).package_name_snapshot },
+    { label: '购电量', emphasize: true, render: (ct) => `${(ct as any).purchasing_energy_mwh} MWh` },
+    { label: '绿电', render: (ct) => (ct as any).green_power_ratio != null ? `${(ct as any).green_power_ratio}%` : '-' },
+    { label: '区间', render: (ct) => <span className="text-muted-foreground">{(ct as any).purchase_start_month} ~ {(ct as any).purchase_end_month}</span> },
+  ];
   // 从合同文档跳转而来时，自动打开新建对话框并预填
   useEffect(() => {
     const p = takeContractPrefill();
@@ -239,16 +265,16 @@ export default function RetailContractsPage() {
       {(expiryStats.within7 > 0 || expiryStats.within30 > 0) && (
         <div className="grid gap-4 md:grid-cols-2">
           {expiryStats.within7 > 0 && (
-            <div className="rounded-lg border border-red-300 bg-red-50 p-4">
+            <div className="rounded-lg border border-red-300 dark:border-red-500/30 bg-red-50 dark:bg-red-500/15 p-4">
               <p className="text-sm font-semibold text-red-700">⚠️ 7天内到期合同</p>
-              <p className="mt-1 text-2xl font-bold text-red-600">{expiryStats.within7} 个</p>
+              <p className="mt-1 text-2xl font-bold text-red-700">{expiryStats.within7} 个</p>
               <p className="text-xs text-red-500 mt-1">请尽快联系客户续签</p>
             </div>
           )}
           {expiryStats.within30 > 0 && (
-            <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-4">
+            <div className="rounded-lg border border-yellow-300 dark:border-yellow-500/30 bg-yellow-50 dark:bg-yellow-500/15 p-4">
               <p className="text-sm font-semibold text-yellow-700">⏰ 30天内到期合同</p>
-              <p className="mt-1 text-2xl font-bold text-yellow-600">{expiryStats.within30} 个</p>
+              <p className="mt-1 text-2xl font-bold text-yellow-700">{expiryStats.within30} 个</p>
               <p className="text-xs text-yellow-500 mt-1">提前准备续签或变更方案</p>
             </div>
           )}
@@ -286,9 +312,7 @@ export default function RetailContractsPage() {
                 ))}
               </div>
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                暂无合同数据
-              </div>
+              <EmptyState compact className="h-full" title="暂无合同数据" />
             )}
           </ChartContainer>
         </div>
@@ -308,9 +332,7 @@ export default function RetailContractsPage() {
               </div>
             </div>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              暂无数据
-            </div>
+            <EmptyState compact className="h-full" title="暂无数据" />
           )}
         </ChartContainer>
       </div>
@@ -331,6 +353,36 @@ export default function RetailContractsPage() {
         {canWrite && <Button onClick={() => setEditing('new')}>新建合同</Button>}
       </div>
 
+      {isMobile ? (
+        isLoading ? (
+          <ChartLoading className="py-8" />
+        ) : contractList.length === 0 ? (
+          <EmptyState compact className="py-8" title="暂无数据" />
+        ) : (
+          <MobileCardList
+            items={contractList as unknown as MobileRow[]}
+            itemKey={(ct) => String((ct as any).id)}
+            fields={contractMobileFields}
+            actions={(ct) => (
+              <>
+                {canWrite && (
+                  <Button size="sm" variant="ghost" onClick={() => setEditing(ct as any)}>编辑</Button>
+                )}
+                <Dropdown
+                  items={[
+                    { label: '附件', onClick: () => setFilesFor(ct as any) },
+                    { label: '申请变更', onClick: () => setApprovalFor(ct as any) },
+                    { label: '生成 PDF', onClick: () => onGenPDF(ct as any) },
+                    ...(canDelete
+                      ? [{ label: '删除', danger: true, onClick: () => onDelete((ct as any).id, (ct as any).customer_name) }]
+                      : []),
+                  ]}
+                />
+              </>
+            )}
+          />
+        )
+      ) : (
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -347,9 +399,7 @@ export default function RetailContractsPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {contractList.map((ct) => {
@@ -415,14 +465,13 @@ export default function RetailContractsPage() {
             })}
             {contractList.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
-                  暂无数据
-                </TableCell>
+                <TableCell colSpan={7}><EmptyState compact title="暂无数据" /></TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
+      )}
 
       {editing && (
         <ContractFormDialog
@@ -529,7 +578,7 @@ function ContractApprovalDialog({
   };
 
   return (
-    <Dialog open onClose={onClose}>
+    <Dialog open onClose={onClose} fullScreenOnMobile>
       <DialogHeader>
         <DialogTitle>申请合同变更 · {contract.customer_name}</DialogTitle>
       </DialogHeader>
@@ -593,7 +642,7 @@ function ContractApprovalDialog({
         </div>
         {err && <p className="text-xs text-destructive">{err}</p>}
         {ok && (
-          <p className="text-xs text-emerald-600">已提交审批，可在「审批中心」查看进度</p>
+          <p className="text-xs text-emerald-700">已提交审批，可在「审批中心」查看进度</p>
         )}
       </div>
       <DialogFooter>
@@ -635,6 +684,7 @@ function ContractFormDialog({
   const [startMonth, setStartMonth] = useState(contract?.purchase_start_month ?? prefill?.startMonth ?? '');
   const [endMonth, setEndMonth] = useState(contract?.purchase_end_month ?? prefill?.endMonth ?? '');
   const [status, setStatus] = useState(contract?.status ?? 'active');
+  const [skipApproval, setSkipApproval] = useState(false); // WP6.1：默认走审批
 
   // ── 扩展字段（从文档预填，可修改）──
   const [contractNo, setContractNo] = useState(prefill?.contractNo ?? '');
@@ -687,9 +737,29 @@ function ContractFormDialog({
       setError('请选择购电起止月份');
       return;
     }
+    // 购电量与绿电占比校验（F11）：购电量需为正数，绿电占比 0~100，结束月份不早于起始
+    if (endMonth < startMonth) {
+      setError('结束月份不能早于起始月份');
+      return;
+    }
+    if (energy !== '') {
+      const energyNum = Number(energy);
+      if (Number.isNaN(energyNum) || energyNum <= 0) {
+        setError('购电量需为正数');
+        return;
+      }
+    }
+    if (greenRatio !== '') {
+      const ratioNum = Number(greenRatio);
+      if (Number.isNaN(ratioNum) || ratioNum < 0 || ratioNum > 100) {
+        setError('绿电占比应为 0~100');
+        return;
+      }
+    }
     setSubmitting(true);
     try {
       const input = {
+        submit_approval: !skipApproval, // WP6.1：默认 true 走审批
         customer_id: customerId,
         package_id: packageId,
         purchasing_energy_mwh: energy !== '' ? Number(energy) : 0,
@@ -698,8 +768,14 @@ function ContractFormDialog({
         purchase_end_month: endMonth,
         status,
       };
-      if (isNew) await createContract(input);
-      else if (contract) await updateContract(contract.id, input);
+      if (isNew) {
+        // WP6.1：默认走审批（202 submitted_approval），审批通过后自动生效
+        const created = await createContract(input);
+        if ((created as unknown as { submitted_approval?: boolean })?.submitted_approval) {
+          onSaved();
+          return;
+        }
+      } else if (contract) await updateContract(contract.id, input);
       onSaved();
     } catch (e) {
       setError(extractErrorMessage(e));
@@ -709,7 +785,7 @@ function ContractFormDialog({
   };
 
   return (
-    <Dialog open onClose={onClose}>
+    <Dialog open onClose={onClose} fullScreenOnMobile>
       <DialogHeader>
         <DialogTitle>{isNew ? '新建合同' : '编辑合同'}</DialogTitle>
       </DialogHeader>
@@ -902,6 +978,16 @@ function ContractFormDialog({
         </div>
         {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
+      {isNew && (
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={skipApproval}
+            onChange={(e) => setSkipApproval(e.target.checked)}
+          />
+          跳过审批直接生效（默认提交审批，通过后自动生效）
+        </label>
+      )}
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>
           取消

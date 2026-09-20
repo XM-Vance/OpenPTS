@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,11 +15,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { MobileCardList, type MobileCardField, type MobileRow } from '@/components/data-display/mobile-card-list';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { ChartContainer } from '@/components/charts/chart-container';
 import { CustomTooltip } from '@/components/charts/custom-tooltip';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
-import { diagnoseIntent, genIntentDemo } from '@/lib/api/intent-customer';
+import { ChartLoading, EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  convertIntentCustomer, diagnoseIntent, genIntentDemo } from '@/lib/api/intent-customer';
 
 function scoreVariant(s: number): 'default' | 'secondary' | 'destructive' | 'success' {
   if (s >= 80) return 'success';
@@ -88,6 +93,15 @@ export default function IntentCustomersPage() {
   const qc = useQueryClient();
   const { has } = usePermission();
   const canWrite = has('customer_management:write');
+  const [convertMsg, setConvertMsg] = useState<string | null>(null);
+  const convertMut = useMutation({
+    mutationFn: (id: string) => convertIntentCustomer(id),
+    onSuccess: (r) => {
+      setConvertMsg(r?.message ?? '已转正式客户');
+      qc.invalidateQueries({ queryKey: ['intent-customers'] });
+    },
+    onError: (e: unknown) => setConvertMsg(String((e as Error)?.message ?? '转正失败')),
+  });
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +125,31 @@ export default function IntentCustomersPage() {
   };
 
   const items = useMemo(() => data?.items ?? [], [data]);
+  const isMobile = useIsMobile();
+  const intentMobileFields: MobileCardField<MobileRow>[] = [
+    {
+      primary: true,
+      render: (row) => {
+        const i = row as any;
+        const isOverdue = (i.coverage_days ?? 0) > 7 && i.overall_score < 80;
+        return (
+          <span>
+            <span className="font-medium">{i.customer_name}</span>
+            {isOverdue && <Badge variant="destructive" className="ml-2 text-[10px] px-1.5 py-0">超时</Badge>}
+          </span>
+        );
+      },
+    },
+    { label: '综合分', emphasize: true, render: (row) => <Badge variant={scoreVariant((row as any).overall_score)}>{(row as any).overall_score.toFixed(1)}</Badge> },
+    { label: '推荐套餐', emphasize: true, render: (row) => (row as any).matched_package ?? '-' },
+    { label: '覆盖天数', render: (row) => (row as any).coverage_days ?? '-' },
+    { label: '完整度', render: (row) => (row as any).completeness != null ? `${(row as any).completeness.toFixed(1)}%` : '-' },
+    { label: '日均负荷', render: (row) => (row as any).avg_daily_load != null ? (row as any).avg_daily_load.toFixed(0) : '-' },
+    { label: '数据分', render: (row) => (row as any).data_score.toFixed(0) },
+    { label: '覆盖分', render: (row) => (row as any).coverage_score.toFixed(0) },
+    { label: '规模分', render: (row) => (row as any).load_score.toFixed(0) },
+    { label: '建议', render: (row) => <span className="text-muted-foreground">{(row as any).recommendation}</span> },
+  ];
   const greenCount = items.filter((i) => i.overall_score >= 80).length;
   const yellowCount = items.filter((i) => i.overall_score >= 60 && i.overall_score < 80).length;
   const redCount = items.filter((i) => i.overall_score < 60).length;
@@ -172,7 +211,7 @@ export default function IntentCustomersPage() {
         <Card>
           <CardContent className="pt-6">
             <p className="text-xs text-muted-foreground">推荐转化（&ge;80）</p>
-            <p className="mt-1 text-2xl font-bold text-emerald-600">{greenCount}</p>
+            <p className="mt-1 text-2xl font-bold text-emerald-700">{greenCount}</p>
           </CardContent>
         </Card>
         <Card>
@@ -194,9 +233,7 @@ export default function IntentCustomersPage() {
         {funnelData.length > 0 && items.length > 0 ? (
           <FunnelBar data={funnelData} />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            暂无数据
-          </div>
+          <EmptyState compact className="h-full" title="暂无数据" />
         )}
       </ChartContainer>
 
@@ -246,15 +283,13 @@ export default function IntentCustomersPage() {
             })}
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            暂无数据
-          </div>
+          <EmptyState compact className="h-full" title="暂无数据" />
         )}
       </ChartContainer>
 
       {/* ── 超时提醒 ── */}
       {overdueItems.length > 0 && (
-        <Alert className="border-orange-300 bg-orange-50 text-orange-800">
+        <Alert className="border-orange-300 dark:border-orange-500/30 bg-orange-50 dark:bg-orange-500/15 text-orange-800 dark:text-orange-400">
           <AlertDescription>
             <span className="font-semibold">⏰ 跟进超时提醒：</span>
             {overdueItems.length} 个客户已超过 7 天未转化 —{' '}
@@ -264,6 +299,15 @@ export default function IntentCustomersPage() {
         </Alert>
       )}
 
+      {isMobile ? (
+        isLoading ? (
+          <ChartLoading className="py-8" />
+        ) : items.length === 0 ? (
+          <EmptyState compact className="py-8" title={<>暂无意向客户{canWrite && '，可点右上「生成演示数据」'}</>} />
+        ) : (
+          <MobileCardList items={items as unknown as MobileRow[]} itemKey={(i) => String((i as any).id)} fields={intentMobileFields} />
+        )
+      ) : (
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -278,14 +322,13 @@ export default function IntentCustomersPage() {
               <TableHead className="text-right">综合分</TableHead>
               <TableHead>推荐套餐</TableHead>
               <TableHead>建议</TableHead>
+              <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={11}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {items.map((i) => {
@@ -293,7 +336,7 @@ export default function IntentCustomersPage() {
               return (
                 <TableRow
                   key={i.id}
-                  className={isOverdue ? 'bg-orange-50' : undefined}
+                  className={isOverdue ? 'bg-orange-50 dark:bg-orange-500/15' : undefined}
                 >
                   <TableCell className="font-medium">
                     {i.customer_name}
@@ -320,19 +363,34 @@ export default function IntentCustomersPage() {
                   </TableCell>
                   <TableCell>{i.matched_package ?? '-'}</TableCell>
                   <TableCell className="text-muted-foreground">{i.recommendation}</TableCell>
+                  <TableCell className="text-right">
+                    {canWrite && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        disabled={convertMut.isPending}
+                        onClick={() => {
+                          setConvertMsg(null);
+                          convertMut.mutate(String(i.id));
+                        }}
+                      >
+                        转正式客户
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
               );
             })}
             {items.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground">
-                  暂无意向客户{canWrite && '，可点右上「生成演示数据」'}
-                </TableCell>
+                <TableCell colSpan={11}><EmptyState compact title={<> 暂无意向客户{canWrite && '，可点右上「生成演示数据」'} </>} /></TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
+      )}
     </div>
   );
 }

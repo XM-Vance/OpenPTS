@@ -132,6 +132,8 @@ export default function DocumentDetailPage() {
   const doc = data?.document;
   const exts = useMemo(() => data?.extractions ?? [], [data]);
   const applies = data?.applies ?? [];
+  // 是否已成功归档（至少一条 apply 记录 applied_rows>0）
+  const hasApplied = applies.some((a) => a.applied_rows > 0);
   // 按分类得到的建议去向（解析完自动路由到对应模块）
   const route = doc?.doc_type ? DOC_TYPE_ROUTE[doc.doc_type] : undefined;
 
@@ -350,6 +352,13 @@ export default function DocumentDetailPage() {
             </h1>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Badge variant={st.variant}>{st.label}</Badge>
+              {doc.status === 'parsed' && (
+                hasApplied ? (
+                  <Badge variant="success" title="已归档到业务表">已入库</Badge>
+                ) : (
+                  <Badge variant="secondary" title="尚未归档到业务表">待处理</Badge>
+                )
+              )}
               <span>{doc.doc_type ?? '未分类'} · {doc.page_count || '-'} 页/表 · 上传人 {doc.uploaded_by ?? '-'} · {fmtTime(doc.created_at)}</span>
             </div>
           </div>
@@ -396,7 +405,7 @@ export default function DocumentDetailPage() {
 
       {/* ── 跨省提醒（非阻断）：提取信息含其它省名时提示核对归属 ── */}
       {doc.status === 'parsed' && provinceWarning && (
-        <Alert className="border-amber-300 bg-amber-50">
+        <Alert className="border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/15">
           <AlertDescription className="flex items-center gap-2 text-sm text-amber-800">
             <MapPin className="h-4 w-4 shrink-0" />
             提取信息疑似涉及「{provinceWarning.detected}」，但本文档归属「{provinceWarning.docOrg}」——
@@ -411,7 +420,7 @@ export default function DocumentDetailPage() {
           <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
             {doc.auto_applied ? (
               <span className="text-sm">
-                <CheckCircle2 className="mr-1 inline h-4 w-4 text-emerald-600" />
+                <CheckCircle2 className="mr-1 inline h-4 w-4 text-emerald-700" />
                 已自动识别为「{doc.doc_type}」并归入「<span className="font-semibold">{route.label}</span>」
               </span>
             ) : (
@@ -510,7 +519,7 @@ export default function DocumentDetailPage() {
                           <TableCell>{e.unit ?? '-'}</TableCell>
                           <TableCell>
                             {e.confidence != null ? (
-                              <span className={e.confidence < 0.6 ? 'text-amber-600' : ''}>
+                              <span className={e.confidence < 0.6 ? 'text-amber-700' : ''}>
                                 {(e.confidence * 100).toFixed(0)}%
                               </span>
                             ) : '-'}

@@ -17,6 +17,7 @@ import {
 import { StatCard } from '@/components/data-display/stat-card';
 import { ChartContainer } from '@/components/charts/chart-container';
 import { DataTable, type DataTableColumn, type DataRow } from '@/components/data-display/data-table';
+import type { MobileCardField } from '@/components/data-display/mobile-card-list';
 import { PageHeader } from '@/components/data-display/page-header';
 import {
   BarChart3,
@@ -28,6 +29,7 @@ import {
   Clock,
   FileText,
 } from 'lucide-react';
+import { EmptyState } from '@/components/feedback';
 
 function fmt(v: number | null | undefined, digits = 2): string {
   if (v == null) return '-';
@@ -224,7 +226,7 @@ export default function ContractProgressPage() {
       render: (row: DataRow) => {
         const v = row.completion_rate as number;
         return (
-          <span className={v >= 100 ? 'text-green-600 font-medium' : v >= 80 ? 'text-amber-600' : 'text-red-600'}>
+          <span className={v >= 100 ? 'text-green-700 font-medium' : v >= 80 ? 'text-amber-700' : 'text-red-700'}>
             {fmt(v, 1)}%
           </span>
         );
@@ -248,6 +250,37 @@ export default function ContractProgressPage() {
         return <span className="text-sm">{display}</span>;
       },
     },
+  ];
+
+  // 移动端卡片字段（窄屏替代 7 列宽表）
+  const mobileCardFields: MobileCardField<DataRow>[] = [
+    {
+      primary: true,
+      render: (row) => (
+        <span>
+          <span className="font-medium">{(row.customer_name as string) || '-'}</span>
+          <span className="ml-2 text-xs text-muted-foreground">{row.operating_month as string}</span>
+        </span>
+      ),
+    },
+    {
+      label: '状态',
+      render: (row) => {
+        const s = STATUS_MAP[row.status as string] ?? { label: row.status as string, variant: 'outline' as const };
+        return <Badge variant={s.variant}>{s.label}</Badge>;
+      },
+    },
+    {
+      label: '完成率',
+      emphasize: true,
+      render: (row) => {
+        const v = row.completion_rate as number;
+        return <span className={v >= 100 ? 'text-green-700 font-medium' : v >= 80 ? 'text-amber-700' : 'text-red-700'}>{fmt(v, 1)}%</span>;
+      },
+    },
+    { label: '计划', emphasize: true, render: (row) => `${fmt(row.planned_energy_mwh as number)} MWh` },
+    { label: '实际', render: (row) => `${fmt(row.actual_energy_mwh as number)} MWh` },
+    { label: '备注', render: (row) => { const note = row.note as string | null; return note ? (note.length > 20 ? note.slice(0, 20) + '…' : note) : '-'; } },
   ];
 
   // 可选月份列表（从数据中提取）
@@ -321,8 +354,8 @@ export default function ContractProgressPage() {
 
       {/* 偏差预警 */}
       {deviationAlerts.length > 0 && (
-        <Alert className="border-red-300 bg-red-50">
-          <AlertCircle className="h-4 w-4 text-red-600" />
+        <Alert className="border-red-300 dark:border-red-500/30 bg-red-50 dark:bg-red-500/15">
+          <AlertCircle className="h-4 w-4 text-red-700" />
           <AlertDescription className="text-red-700">
             <span className="font-semibold">⚠️ 偏差预警：</span>
             {deviationAlerts.map((a) => (
@@ -343,9 +376,7 @@ export default function ContractProgressPage() {
           {trendData.length > 0 ? (
             <PlanActualComposed data={trendData} />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              暂无数据
-            </div>
+            <EmptyState compact className="h-full" title="暂无数据" />
           )}
         </ChartContainer>
 
@@ -353,9 +384,7 @@ export default function ContractProgressPage() {
           {trendData.length > 0 ? (
             <CompletionComposed data={trendData} />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              暂无趋势数据
-            </div>
+            <EmptyState compact className="h-full" title="暂无趋势数据" />
           )}
         </ChartContainer>
       </div>
@@ -385,7 +414,7 @@ export default function ContractProgressPage() {
                     />
                   </div>
                   <div className="w-16 shrink-0 text-right">
-                    <span className={`text-xs font-medium ${isOver ? 'text-red-600' : row.完成率 >= 100 ? 'text-green-600' : 'text-blue-600'}`}>
+                    <span className={`text-xs font-medium ${isOver ? 'text-red-700' : row.完成率 >= 100 ? 'text-green-700' : 'text-blue-600'}`}>
                       {row.完成率}%
                     </span>
                   </div>
@@ -400,9 +429,7 @@ export default function ContractProgressPage() {
             </div>
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            暂无数据
-          </div>
+          <EmptyState compact className="h-full" title="暂无数据" />
         )}
       </ChartContainer>
 
@@ -515,6 +542,7 @@ export default function ContractProgressPage() {
             pageSize={15}
             showPagination
             loading={listLoading}
+            mobileCardFields={mobileCardFields}
           />
         </CardContent>
       </Card>

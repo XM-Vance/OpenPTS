@@ -1,11 +1,6 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Rocket, CheckCircle2 } from 'lucide-react';
 
 interface ModulePlaceholderProps {
   title: string;
@@ -28,26 +23,33 @@ export function ModulePlaceholder({
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <CardTitle>模块开发中</CardTitle>
-            <Badge variant="secondary">{phase}</Badge>
+      <Card className="border-dashed">
+        <CardContent className="flex flex-col items-center gap-5 py-12 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Rocket className="h-7 w-7" aria-hidden />
           </div>
-          <CardDescription>
-            导航已接通；本模块的页面与后端接口将按阶段 2 计划迁移。
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-2 text-sm font-medium">规划功能</p>
-          <ul className="space-y-1.5 text-sm text-muted-foreground">
-            {features.map((f) => (
-              <li key={f} className="flex gap-2">
-                <span className="text-foreground">·</span>
-                {f}
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-center gap-2">
+              <p className="font-semibold">模块建设中</p>
+              <Badge variant="secondary">{phase}</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              导航已接通；本模块的页面与后端接口将按阶段 2 计划迁移。
+            </p>
+          </div>
+          {features.length > 0 && (
+            <div className="grid w-full max-w-2xl gap-2 sm:grid-cols-2">
+              {features.map((f) => (
+                <div
+                  key={f}
+                  className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-left text-sm text-muted-foreground"
+                >
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-primary/70" aria-hidden />
+                  {f}
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -77,6 +77,7 @@ type Deps struct {
 	LoadCharRepo         *db.LoadCharacteristicsRepository
 	LoadCharExtRepo      *db.LoadCharacteristicsExtRepository
 	LoadDataRepo         *db.LoadDataRepository
+	MeterRepo            *db.MeterRepository
 	PriceTrendRepo       *db.PriceTrendRepository
 	CustAnalysisRepo     *db.CustomerAnalysisRepository
 	TradeStrategyRepo    *db.TradeStrategyRepository

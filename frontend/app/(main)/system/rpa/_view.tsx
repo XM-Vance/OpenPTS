@@ -31,6 +31,8 @@ import { ChartContainer } from '@/components/charts/chart-container';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
 import { genRPADemo, listRPAJobs, listRPARuns } from '@/lib/api/rpa';
+import { EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
 
 function fmtTime(s?: string | null): string {
   if (!s) return '-';
@@ -165,7 +167,7 @@ export default function SystemRPAPage() {
         <Card>
           <CardContent className="pt-6">
             <p className="text-xs text-muted-foreground">成功</p>
-            <p className="mt-1 text-2xl font-bold text-emerald-600">{stats.success}</p>
+            <p className="mt-1 text-2xl font-bold text-emerald-700">{stats.success}</p>
           </CardContent>
         </Card>
         <Card>
@@ -180,7 +182,7 @@ export default function SystemRPAPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <ChartContainer title="RPA 运行状态实时面板">
           {statusPie.length === 0 ? (
-            <p className="text-sm text-muted-foreground">暂无数据</p>
+            <EmptyState compact title="暂无数据" />
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
@@ -208,13 +210,13 @@ export default function SystemRPAPage() {
 
         <ChartContainer title="执行结果统计（成功/失败 & 平均耗时）">
           {resultBar.length === 0 ? (
-            <p className="text-sm text-muted-foreground">暂无数据</p>
+            <EmptyState compact title="暂无数据" />
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={resultBar} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="job" tick={{ fontSize: 10, fill: '#6b7280' }} />
-                <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} />
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="job" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="成功" stackId="a" fill="#10b981" isAnimationActive={false} />
@@ -232,7 +234,7 @@ export default function SystemRPAPage() {
         </CardHeader>
         <CardContent>
           {timeline.length === 0 ? (
-            <p className="text-sm text-muted-foreground">暂无运行记录</p>
+            <EmptyState compact title="暂无运行记录" />
           ) : (
             <div className="relative pl-6 space-y-0">
               {/* vertical line */}
@@ -289,9 +291,7 @@ export default function SystemRPAPage() {
               <TableBody>
                 {jobsLoading && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      加载中...
-                    </TableCell>
+                    <TableCell colSpan={6}><Skeleton className="h-5 w-full" /></TableCell>
                   </TableRow>
                 )}
                 {jobs?.items.map((j) => (
@@ -324,9 +324,7 @@ export default function SystemRPAPage() {
                 ))}
                 {jobs?.items.length === 0 && !jobsLoading && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      暂无 RPA 任务{canWrite && '，可点右上「生成演示数据」'}
-                    </TableCell>
+                    <TableCell colSpan={6}><EmptyState compact title={<> 暂无 RPA 任务{canWrite && '，可点右上「生成演示数据」'} </>} /></TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -373,9 +371,7 @@ export default function SystemRPAPage() {
                 ))}
                 {runs?.items.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground">
-                      暂无运行记录
-                    </TableCell>
+                    <TableCell colSpan={8}><EmptyState compact title="暂无运行记录" /></TableCell>
                   </TableRow>
                 )}
               </TableBody>

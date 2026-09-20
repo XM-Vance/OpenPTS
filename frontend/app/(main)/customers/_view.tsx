@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DemoBadge } from '@/components/feedback';
 import {
   Table,
   TableBody,
@@ -18,6 +17,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dropdown } from '@/components/ui/dropdown';
+import { MobileCardList, type MobileCardField, type MobileRow } from '@/components/data-display/mobile-card-list';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { AttachmentPanel } from '@/components/attachments/attachment-panel';
 import { usePermission } from '@/lib/auth/use-permission';
 import { extractErrorMessage } from '@/lib/api/client';
@@ -39,6 +41,8 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { ChartLoading, EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // 图表组件懒加载（recharts 从首屏 JS 剥离，与项目既有 _charts 约定一致）。
 const CustomerBubbleChart = dynamic(() => import('./_charts').then((m) => m.CustomerBubbleChart), { ssr: false });
@@ -99,10 +103,10 @@ function Stars({ count, color = '#f59e0b' }: { count: number; color?: string }) 
 function StatusBadge({ status }: { status: Customer360['status'] }) {
   const colors: Record<string, string> = {
     potential: 'bg-slate-100 text-slate-600',
-    interested: 'bg-blue-100 text-blue-700',
-    contracted: 'bg-emerald-100 text-emerald-700',
-    renewed: 'bg-indigo-100 text-indigo-700',
-    churned: 'bg-red-100 text-red-700',
+    interested: 'bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400',
+    contracted: 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
+    renewed: 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400',
+    churned: 'bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400',
   };
   const labels: Record<string, string> = {
     potential: '潜在',
@@ -181,6 +185,30 @@ export default function CustomersPage() {
   const [editing, setEditing] = useState<Customer | 'new' | null>(null);
   const [filesFor, setFilesFor] = useState<Customer | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const isMobile = useIsMobile();
+  // 移动端客户卡片字段（编辑主按钮，附件/删除收「⋯」）
+  const custMobileFields: MobileCardField<MobileRow>[] = [
+    {
+      primary: true,
+      render: (c) => (
+        <span>
+          <span className="font-medium">{(c as any).user_name}</span>
+          {(c as any).is_demo && <Badge variant="secondary" className="ml-2">演示</Badge>}
+        </span>
+      ),
+    },
+    { label: '简称', render: (c) => (c as any).short_name || '-' },
+    { label: '所在地', render: (c) => (c as any).location || '-' },
+    { label: '客户经理', render: (c) => (c as any).manager || '-' },
+    {
+      label: '标签',
+      render: (c) => (
+        <div className="flex flex-wrap gap-1">
+          {((c as any).tags ?? []).map((t: string) => <Badge key={t} variant="outline">{t}</Badge>)}
+        </div>
+      ),
+    },
+  ];
 
   // Local keyword input (not committed to URL until search)
   const [keyword, setKeyword] = useState(search);
@@ -264,7 +292,7 @@ export default function CustomersPage() {
         <h1 className="text-2xl font-bold">客户档案管理</h1>
         <div className="flex items-center gap-2">
           {/* View toggle */}
-          <div className="flex rounded-lg border bg-white p-0.5 shadow-sm">
+          <div className="flex rounded-lg border bg-card p-0.5 shadow-sm">
             <Button
               size="sm"
               variant={viewMode === 'table' ? 'default' : 'ghost'}
@@ -327,8 +355,44 @@ export default function CustomersPage() {
         </>
       )}
 
+      {/* 移动端：客户卡片列表（编辑主按钮 + 附件/删除「⋯」菜单），替代宽表 */}
+      {isMobile && (
+        <>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <CustomerBubbleChart data={customers360} />
+            <LifecycleFunnel data={customers360} />
+          </div>
+          {isLoading ? (
+            <ChartLoading className="py-8" />
+          ) : items.length === 0 ? (
+            <EmptyState compact className="py-8" title="暂无数据" />
+          ) : (
+            <MobileCardList
+              items={items as unknown as MobileRow[]}
+              itemKey={(c) => String((c as any).id)}
+              fields={custMobileFields}
+              actions={(c) => (
+                <>
+                  {canWrite && (
+                    <Button size="sm" variant="ghost" onClick={() => setEditing(c as any)}>编辑</Button>
+                  )}
+                  <Dropdown
+                    items={[
+                      { label: '附件', onClick: () => setFilesFor(c as any) },
+                      ...(canDelete
+                        ? [{ label: '删除', danger: true, onClick: () => onDelete((c as any).id, (c as any).user_name) }]
+                        : []),
+                    ]}
+                  />
+                </>
+              )}
+            />
+          )}
+        </>
+      )}
+
       {/* Customer table with server-side sort & pagination */}
-      {viewMode === 'table' && (
+      {viewMode === 'table' && !isMobile && (
         <>
           {/* Charts above table in table mode too */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -371,9 +435,7 @@ export default function CustomersPage() {
               <TableBody>
                 {isLoading && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      加载中...
-                    </TableCell>
+                    <TableCell colSpan={6}><Skeleton className="h-5 w-full" /></TableCell>
                   </TableRow>
                 )}
                 {items.map((cust) => (
@@ -381,7 +443,7 @@ export default function CustomersPage() {
                     key={cust.id}
                     ref={highlightId === cust.id ? highlightRef : undefined}
                     className={
-                      highlightId === cust.id ? 'bg-amber-50 ring-2 ring-amber-300' : ''
+                      highlightId === cust.id ? 'bg-amber-50 dark:bg-amber-500/15 ring-2 ring-amber-300 dark:ring-amber-500/40' : ''
                     }
                   >
                     <TableCell className="font-medium">
@@ -439,9 +501,7 @@ export default function CustomersPage() {
                 ))}
                 {total === 0 && !isLoading && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      暂无数据
-                    </TableCell>
+                    <TableCell colSpan={6}><EmptyState compact title="暂无数据" /></TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -595,7 +655,7 @@ function CustomerFormDialog({
   };
 
   return (
-    <Dialog open onClose={onClose}>
+    <Dialog open onClose={onClose} fullScreenOnMobile>
       <DialogHeader>
         <DialogTitle>{isNew ? '新建客户' : '编辑客户'}</DialogTitle>
       </DialogHeader>

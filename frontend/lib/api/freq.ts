@@ -24,3 +24,21 @@ export async function generateFreqDemoData(
   const { data } = await apiClient.post('/api/v1/freq/demo-data', { days });
   return data;
 }
+
+// ─── WP5.2：考核指标（雷达图数据源） ───
+
+export interface FreqPerformanceItem {
+  id: string;
+  settlement_date: string;
+  regulation_type: 'AGC' | 'AVC';
+  response_score: number;
+  precision_score: number;
+  duration_score: number;
+  delay_score: number;
+  capacity_score: number;
+  mileage_mw: number;
+  is_demo: boolean;
+}
+
+export const listFreqPerformance = (limit = 30): Promise<{ items: FreqPerformanceItem[] }> =>
+  apiClient.get('/api/v1/freq/performance', { params: { limit } }).then((r) => r.data);

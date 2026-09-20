@@ -4,13 +4,12 @@
 // 从「气象数据」拆出，归入「发电侧预测」。
 // 内容含 recharts，用 next/dynamic({ssr:false}) 瘦包装，按需加载、不进首屏。
 import dynamic from 'next/dynamic';
+import { ChartLoading } from '@/components/feedback';
 
 const Observation = dynamic(() => import('../_observation').then((m) => m.WeatherObservation), {
   ssr: false,
   loading: () => (
-    <div className="flex min-h-[60vh] items-center justify-center text-sm text-muted-foreground">
-      加载中…
-    </div>
+    <ChartLoading className="min-h-[60vh]" />
   ),
 });
 

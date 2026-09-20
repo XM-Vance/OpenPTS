@@ -38,6 +38,7 @@ import {
   type ScheduledJob,
 } from '@/lib/api/scheduler';
 import { AlertTriangle } from 'lucide-react';
+import { EmptyState } from '@/components/feedback';
 
 const STATUS_LABEL: Record<string, string> = {
   success: '成功',
@@ -187,20 +188,20 @@ export default function SystemJobsPage() {
       {/* ═══════════ Gantt Chart ═══════════ */}
       <ChartContainer title="任务执行甘特图（最近执行时间线）">
         {ganttData.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无执行数据</p>
+          <EmptyState compact title="暂无执行数据" />
         ) : (
           <ResponsiveContainer width="100%" height={Math.max(200, ganttData.length * 36 + 40)}>
             <BarChart data={ganttData} layout="vertical" margin={{ top: 4, right: 12, left: 10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <CartesianGrid strokeDasharray="3 3" />
               <XAxis
                 type="number"
-                tick={{ fontSize: 11, fill: '#6b7280' }}
+                tick={{ fontSize: 11 }}
                 tickFormatter={(v: number) => {
                   const d = new Date(v);
                   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
                 }}
               />
-              <YAxis dataKey="job_name" type="category" tick={{ fontSize: 11, fill: '#6b7280' }} width={120} />
+              <YAxis dataKey="job_name" type="category" tick={{ fontSize: 11 }} width={120} />
               <Tooltip
                 contentStyle={{ fontSize: 12 }}
                 formatter={(v: number, name: string) => {
@@ -226,13 +227,13 @@ export default function SystemJobsPage() {
       {/* ═══════════ Success Rate Trend ═══════════ */}
       <ChartContainer title="执行成功率趋势">
         {successTrend.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无数据</p>
+          <EmptyState compact title="暂无数据" />
         ) : (
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={successTrend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} />
-              <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={50} unit="%" domain={[0, 100]} />
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} width={50} unit="%" domain={[0, 100]} />
               <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number, name: string) => name === '成功率' ? `${v}%` : v} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Line type="monotone" dataKey="rate" name="成功率" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
@@ -423,9 +424,7 @@ export default function SystemJobsPage() {
                 ))}
                 {runs?.items.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">
-                      暂无执行记录
-                    </TableCell>
+                    <TableCell colSpan={7}><EmptyState compact title="暂无执行记录" /></TableCell>
                   </TableRow>
                 )}
               </TableBody>

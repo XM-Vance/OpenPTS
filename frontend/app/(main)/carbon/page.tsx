@@ -15,7 +15,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ChartContainer } from '@/components/charts/chart-container';
+import { MobileCardList } from '@/components/data-display/mobile-card-list';
 import { usePermission } from '@/lib/auth/use-permission';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { extractErrorMessage } from '@/lib/api/client';
 import {
   getCarbonSummary,
@@ -26,6 +28,8 @@ import {
 } from '@/lib/api/carbon';
 import { Leaf, TrendingUp, TrendingDown } from 'lucide-react';
 import type { CarbonTrendPoint } from './_charts';
+import { ChartLoading, EmptyState } from '@/components/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const SELECT_CLASS =
   'flex h-9 rounded-md border border-input bg-transparent px-3 text-sm';
@@ -36,9 +40,9 @@ const fmtInt = (v: number | null | undefined) =>
 
 // 产品配色（与走势图一致）
 const PRODUCT_COLOR: Record<string, string> = {
-  CEA: 'text-emerald-600',
+  CEA: 'text-emerald-700',
   CCER: 'text-blue-600',
-  EUA: 'text-amber-600',
+  EUA: 'text-amber-700',
 };
 
 // recharts 懒加载：剥离出首屏。
@@ -80,7 +84,7 @@ export default function CarbonPage() {
         byDate.set(d, pt);
       }
       if (q.product === 'CEA' || q.product === 'CCER' || q.product === 'EUA') {
-        pt[q.product] = q.close_price;
+        pt[q.product] = q.close_price ?? null;
       }
     }
     return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
@@ -90,6 +94,29 @@ export default function CarbonPage() {
   const tableRows = useMemo(
     () => (product ? quotes.filter((q) => q.product === product) : quotes),
     [quotes, product],
+  );
+
+  const isMobile = useIsMobile();
+  // 移动端卡片字段：日期+产品作标题，收盘/开盘强调，高低/量额次行
+  const carbonMobileFields = useMemo(
+    () => [
+      {
+        primary: true,
+        render: (q: CarbonQuote) => (
+          <span>
+            {q.trade_date.slice(0, 10)}
+            <span className={`ml-2 text-xs ${PRODUCT_COLOR[q.product] ?? ''}`}>{q.product}</span>
+          </span>
+        ),
+      },
+      { label: '收盘', emphasize: true, render: (q: CarbonQuote) => fmt(q.close_price) },
+      { label: '开盘', emphasize: true, render: (q: CarbonQuote) => fmt(q.open_price) },
+      { label: '最高', render: (q: CarbonQuote) => fmt(q.high_price) },
+      { label: '最低', render: (q: CarbonQuote) => fmt(q.low_price) },
+      { label: '成交量', render: (q: CarbonQuote) => fmtInt(q.volume) },
+      { label: '成交额', render: (q: CarbonQuote) => fmtInt(q.turnover) },
+    ],
+    [],
   );
 
   const onGen = async () => {
@@ -108,14 +135,14 @@ export default function CarbonPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">碳交易</h1>
           <p className="text-sm text-muted-foreground">
             全国碳排放配额(CEA)、国家核证自愿减排量(CCER)与欧盟配额(EUA)行情 · 全国统一报价
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
@@ -162,7 +189,7 @@ export default function CarbonPage() {
                   {s.close != null && s.change != null && (
                     <div
                       className={`flex items-center gap-1 text-sm font-medium ${
-                        up ? 'text-red-600' : 'text-green-600'
+                        up ? 'text-red-700' : 'text-green-700'
                       }`}
                     >
                       {up ? (
@@ -229,6 +256,20 @@ export default function CarbonPage() {
           <option value="EUA">EUA 欧盟配额</option>
         </select>
       </div>
+      {isMobile ? (
+        // 移动端：卡片列表（最近 60 条，避免一次渲染过多卡片）
+        isLoading ? (
+          <ChartLoading className="py-8" />
+        ) : tableRows.length === 0 ? (
+          <EmptyState compact className="py-8" title={<>暂无数据{canWrite && '，可点右上「生成演示数据」'}</>} />
+        ) : (
+          <MobileCardList
+            items={tableRows.slice(0, 60)}
+            itemKey={(q) => String(q.id)}
+            fields={carbonMobileFields}
+          />
+        )
+      ) : (
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -246,9 +287,7 @@ export default function CarbonPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  加载中...
-                </TableCell>
+                <TableCell colSpan={8}><Skeleton className="h-5 w-full" /></TableCell>
               </TableRow>
             )}
             {tableRows.slice(0, 500).map((q) => (
@@ -267,14 +306,13 @@ export default function CarbonPage() {
             ))}
             {tableRows.length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  暂无数据{canWrite && '，可点右上「生成演示数据」'}
-                </TableCell>
+                <TableCell colSpan={8}><EmptyState compact title={<> 暂无数据{canWrite && '，可点右上「生成演示数据」'} </>} /></TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
+      )}
     </div>
   );
 }

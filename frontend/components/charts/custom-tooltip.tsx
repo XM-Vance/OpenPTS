@@ -52,8 +52,8 @@ export function CustomTooltip({
   const weekdayStr = getWeekday(label ?? '');
 
   return (
-    <div className="rounded-md border bg-white px-3 py-2 shadow-lg dark:bg-zinc-900">
-      <p className="mb-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+    <div className="rounded-md border bg-popover px-3 py-2 text-popover-foreground shadow-lg">
+      <p className="mb-1.5 text-xs font-semibold text-muted-foreground">
         {label}
         {weekdayStr}
         {periodType ? ` (${periodType})` : ''}

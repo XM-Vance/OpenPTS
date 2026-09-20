@@ -10,9 +10,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Save, Lock, CheckCircle2, AlertCircle } from 'lucide-react';
 
 const ROLES = [
-  { code: 'super_admin', name: '超级管理员', color: 'bg-red-100 text-red-700' },
-  { code: 'admin', name: '管理员', color: 'bg-blue-100 text-blue-700' },
-  { code: 'analyst', name: '分析师', color: 'bg-green-100 text-green-700' },
+  { code: 'super_admin', name: '超级管理员', color: 'bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400' },
+  { code: 'admin', name: '管理员', color: 'bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400' },
+  { code: 'analyst', name: '分析师', color: 'bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-400' },
   { code: 'viewer', name: '只读用户', color: 'bg-gray-100 text-gray-700' },
 ];
 
@@ -138,7 +138,7 @@ export default function MenuManagementPage() {
                     key={page.code}
                     className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent/30"
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                       <Checkbox
                         checked={isChecked(selectedRole, page)}
                         onCheckedChange={() => toggle(selectedRole, page)}

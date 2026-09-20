@@ -1,48 +1,12 @@
 import { apiClient } from './client';
 
-export const getRetailSettlementMonthlyCustomers = (params: { month: string }) =>
-  // TODO(P1): 后端无对应路由 /retail/monthly-settlement/monthly-customers
-  apiClient.get('/api/v1/retail/monthly-settlement', { params });
-
-export const getRetailSettlementMonthlyChartData = (params: { month: string }) =>
-  // TODO(P1): 后端无对应路由 /retail/monthly-settlement/monthly-chart-data
-  apiClient.get('/api/v1/retail/monthly-settlement', { params });
+// 零售月度结算 API。
+// 注：原先有 9 个带 TODO(P1) 的函数（monthly-customers/chart-data/progress/calculate/
+// monthly-calc/daily/monthly-customer-detail 等），后端从未实现且无任何页面调用（死代码），
+// 已删除（契约闸 KNOWN_PENDING 对应条目同步移除）。仅保留被页面实际使用的函数。
 
 export const getRetailSettlementMonthlySummaries = (params?: Record<string, unknown>) =>
   apiClient.get('/api/v1/retail/monthly-settlement', { params });
-
-export const getRetailSettlementMonthlyProgress = (jobId: string) =>
-  // TODO(P1): 后端无对应路由 /retail/monthly-settlement/monthly-progress/:jobId
-  apiClient.get(`/api/v1/retail/monthly-settlement/${jobId}`);
-
-export const postRetailSettlementCalculate = (data: {
-  date?: string;
-  month?: string;
-  force?: boolean;
-  wholesale_version?: string;
-}) =>
-  // TODO(P1): 后端无对应路由 POST /retail/monthly-settlement/calculate
-  apiClient.post('/api/v1/retail/monthly-settlement', data);
-
-export const postRetailSettlementMonthlyCalc = (data: { month: string; force: boolean }) =>
-  // TODO(P1): 后端无对应路由 POST /retail/monthly-settlement/monthly-calc
-  apiClient.post('/api/v1/retail/monthly-settlement', data);
-
-export const getRetailSettlementDaily = (params?: Record<string, unknown>) =>
-  // TODO(P1): 后端无对应路由 /retail/monthly-settlement/daily
-  apiClient.get('/api/v1/retail/monthly-settlement', { params });
-
-export const calcRetailSettlementMonthly = (data?: Record<string, unknown>) =>
-  // TODO(P1): 后端无对应路由 POST /retail/monthly-settlement/monthly-calc
-  apiClient.post('/api/v1/retail/monthly-settlement', data);
-
-export const getRetailSettlementMonthlyCustomerDetail = (params?: Record<string, unknown>) =>
-  // TODO(P1): 后端无对应路由 /retail/monthly-settlement/monthly-customer-detail
-  apiClient.get('/api/v1/retail/monthly-settlement', { params });
-
-export const calcRetailSettlementMonthlyForce = (month: string) =>
-  // TODO(P1): 后端无对应路由 POST /retail/monthly-settlement/monthly-calc (force)
-  apiClient.post('/api/v1/retail/monthly-settlement', { month, force: true });
 
 // ─── 以下自 p0p1.ts 迁入（2026-06，零售月度结算） ───
 // ─── U1 零售月结 ───
@@ -60,12 +24,4 @@ export interface RetailMonthlySettle {
   penalty_amount: number;
   note?: string | null;
   created_at: string;
-}
-export async function listRetailMonthly(contractId?: string): Promise<{ items: RetailMonthlySettle[] }> {
-  const { data } = await apiClient.get('/api/v1/retail/monthly-settlement', { params: { contract_id: contractId } });
-  return data;
-}
-export async function genRetailMonthlyDemo() {
-  const { data } = await apiClient.post('/api/v1/retail/monthly-settlement/demo-data');
-  return data;
 }

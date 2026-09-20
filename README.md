@@ -3,7 +3,7 @@
 > **OpenPTS** = **Open** **P**ower **T**rading **S**ystem —— 一个可二次开发的电力交易平台开源骨架。
 
 [![CI](https://github.com/XM-Vance/OpenPTS/actions/workflows/ci.yml/badge.svg)](https://github.com/XM-Vance/OpenPTS/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-v0.2.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.2.1-blue)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## 🆕 v0.2.0 发布亮点

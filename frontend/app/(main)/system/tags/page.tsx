@@ -18,6 +18,8 @@ import {
   type TagInput,
 } from '@/lib/api/tags';
 import { Tags, Plus, Pencil, Trash2 } from 'lucide-react';
+import { EmptyState } from '@/components/feedback';
+import { ChartLoading } from '@/components/feedback';
 
 const ENTITY_TYPES = [
   { value: '', label: '全部实体' },
@@ -172,7 +174,7 @@ function TagEditorDialog({
         {/* Preview */}
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">预览</Label>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span
               className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium text-white"
               style={{ backgroundColor: formData.color }}
@@ -241,7 +243,7 @@ export default function TagsPage() {
             管理各实体的标签，支持自定义颜色与分类
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={entityFilter}
             onChange={(e) => setEntityFilter(e.target.value)}
@@ -259,13 +261,11 @@ export default function TagsPage() {
       </div>
 
       {isLoading && (
-        <div className="py-12 text-center text-sm text-muted-foreground">加载中...</div>
+        <ChartLoading className="py-12 text-center text-sm text-muted-foreground" />
       )}
 
       {!isLoading && items.length === 0 && (
-        <div className="py-12 text-center text-sm text-muted-foreground">
-          暂无标签，点击「新增标签」添加
-        </div>
+        <EmptyState compact className="py-12 text-center text-sm text-muted-foreground" title="暂无标签，点击「新增标签」添加" />
       )}
 
       {!isLoading &&
@@ -280,7 +280,7 @@ export default function TagsPage() {
                   key={t.id}
                   className="flex items-center justify-between rounded-lg border bg-card p-3"
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span
                       className="h-5 w-5 rounded-full shrink-0"
                       style={{ backgroundColor: t.color }}

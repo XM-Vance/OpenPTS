@@ -20,6 +20,7 @@ import {
 import { listPolicies, createPolicy, deletePolicy, type PolicyInput } from '@/lib/api/policy';
 import { extractErrorMessage } from '@/lib/api/client';
 import { ScrollText, Plus, Trash2, Loader2, FileScan } from 'lucide-react';
+import { EmptyState } from '@/components/feedback';
 
 const SELECT_CLASS = 'flex h-9 rounded-md border border-input bg-transparent px-3 text-sm';
 const CATEGORIES = ['市场规则', '补贴政策', '准入注册', '价格机制', '其他'];
@@ -155,9 +156,7 @@ export default function PoliciesPage() {
                 </TableRow>
               ) : (rows ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    暂无政策文件，可手动新增或在文档解析中把政策文件「确认入库 → 政策文件」
-                  </TableCell>
+                  <TableCell colSpan={6}><EmptyState compact title="暂无政策文件，可手动新增或在文档解析中把政策文件「确认入库 → 政策文件」" /></TableCell>
                 </TableRow>
               ) : (
                 (rows ?? []).map((p) => (

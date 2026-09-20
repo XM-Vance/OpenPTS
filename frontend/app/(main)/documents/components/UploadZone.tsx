@@ -183,16 +183,16 @@ export default function UploadZone({ onComplete }: Props) {
 
       {/* Upload progress */}
       {tasks.length > 0 && (
-        <div className="rounded-lg border bg-white">
+        <div className="rounded-lg border bg-card">
           {/* Header */}
           <div className="flex items-center justify-between border-b px-4 py-2">
             <div className="flex items-center gap-3 text-sm">
               <span className="font-medium">上传队列</span>
               <span className="text-muted-foreground">
                 共 {tasks.length} 个
-                {doneCount > 0 && <span className="text-emerald-600"> · 成功 {doneCount}</span>}
-                {dupCount > 0 && <span className="text-amber-600"> · 重复 {dupCount}</span>}
-                {errCount > 0 && <span className="text-red-600"> · 失败 {errCount}</span>}
+                {doneCount > 0 && <span className="text-emerald-700"> · 成功 {doneCount}</span>}
+                {dupCount > 0 && <span className="text-amber-700"> · 重复 {dupCount}</span>}
+                {errCount > 0 && <span className="text-red-700"> · 失败 {errCount}</span>}
               </span>
               {uploading && (
                 <span className="flex items-center gap-1 text-blue-600">
@@ -243,11 +243,11 @@ export default function UploadZone({ onComplete }: Props) {
                       <span
                         className={
                           task.status === 'done'
-                            ? 'text-emerald-600'
+                            ? 'text-emerald-700'
                             : task.status === 'error'
-                              ? 'text-red-600'
+                              ? 'text-red-700'
                               : task.status === 'duplicate'
-                                ? 'text-amber-600'
+                                ? 'text-amber-700'
                                 : 'text-muted-foreground'
                         }
                       >

@@ -24,15 +24,20 @@ export interface IntentDiagnosis extends IntentCustomer {
   matched_package?: string | null;
   recommendation: string;
 }
-export async function listIntentCustomers(): Promise<{ items: IntentCustomer[] }> {
-  const { data } = await apiClient.get('/api/v1/intent-customers');
-  return data;
-}
 export async function diagnoseIntent(): Promise<{ items: IntentDiagnosis[] }> {
   const { data } = await apiClient.get('/api/v1/intent-customers/diagnose');
   return data;
 }
 export async function genIntentDemo(): Promise<{ customers: number; message: string }> {
   const { data } = await apiClient.post('/api/v1/intent-customers/demo-data');
+  return data;
+}
+
+// WP6.3：意向客户转正（Phase 1b：customers.lifecycle intent→service，可选建合同）
+export async function convertIntentCustomer(
+  id: string,
+  body?: { customer_name?: string; package_id?: string; sign_date?: string },
+): Promise<{ customer_id?: string; message?: string }> {
+  const { data } = await apiClient.post(`/api/v1/intent-customers/${id}/convert`, body ?? {});
   return data;
 }

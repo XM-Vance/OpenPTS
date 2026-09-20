@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
   TableBody,
@@ -26,6 +27,7 @@ import {
   getCustomerLoadSummary,
   getCustomerLoadCurve,
 } from '@/lib/api/customer-load';
+import { EmptyState } from '@/components/feedback';
 
 const fmt = (v: number) => v.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
 
@@ -194,7 +196,7 @@ export default function CustomerLoadAnalysisPage() {
                 <TableBody>
                   {isLoading && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">加载中...</TableCell>
+                      <TableCell colSpan={5}><Skeleton className="h-5 w-full" /></TableCell>
                     </TableRow>
                   )}
                   {items.map((c) => {
@@ -205,7 +207,7 @@ export default function CustomerLoadAnalysisPage() {
                         key={c.customer_id}
                         className={
                           selected === c.customer_id
-                            ? 'cursor-pointer bg-amber-50 ring-1 ring-amber-300'
+                            ? 'cursor-pointer bg-amber-50 dark:bg-amber-500/15 ring-1 ring-amber-300 dark:ring-amber-500/40'
                             : 'cursor-pointer hover:bg-muted/50'
                         }
                         onClick={() => {
@@ -217,6 +219,11 @@ export default function CustomerLoadAnalysisPage() {
                           <div className="flex items-center gap-1">
                             {isCompared && <div className="h-2 w-2 rounded-full bg-blue-500" />}
                             {c.customer_name}
+                            {c.is_intent && (
+                              <Badge variant="outline" className="ml-1 text-[10px] text-amber-700">
+                                意向
+                              </Badge>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="text-right">{fmt(c.avg_daily)}</TableCell>
@@ -234,7 +241,7 @@ export default function CustomerLoadAnalysisPage() {
                   })}
                   {items.length === 0 && !isLoading && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">暂无负荷数据</TableCell>
+                      <TableCell colSpan={5}><EmptyState compact title="暂无负荷数据" /></TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -254,9 +261,9 @@ export default function CustomerLoadAnalysisPage() {
                 <div className="[&_.recharts-surface:focus]:outline-none" style={{ width: '100%', height: 320 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={multiCurveData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="period" tick={{ fontSize: 10, fill: '#6b7280' }} interval={11} />
-                      <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={60} unit=" kW" />
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="period" tick={{ fontSize: 10 }} interval={11} />
+                      <YAxis tick={{ fontSize: 12 }} width={60} unit=" kW" />
                       <Tooltip formatter={(v: number) => `${fmt(v)} kW`} contentStyle={{ fontSize: 12 }} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       {compareCurves?.map((c, idx) => (
@@ -277,9 +284,9 @@ export default function CustomerLoadAnalysisPage() {
                 <div className="[&_.recharts-surface:focus]:outline-none" style={{ width: '100%', height: 320 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="period" tick={{ fontSize: 10, fill: '#6b7280' }} interval={11} />
-                      <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} width={60} unit=" kW" />
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="period" tick={{ fontSize: 10 }} interval={11} />
+                      <YAxis tick={{ fontSize: 12 }} width={60} unit=" kW" />
                       <Tooltip formatter={(v: number) => `${fmt(v)} kW`} contentStyle={{ fontSize: 12 }} />
                       <Line type="monotone" dataKey="load" stroke="#2563eb" strokeWidth={2} dot={false} isAnimationActive={false} />
                     </LineChart>

@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
+import { apiClient } from '@/lib/api/client';
 import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { CHART_SERIES } from '@/components/charts/palette';
 import {
   getDashboardSummary,
   getSettlementSeries,
@@ -38,11 +41,13 @@ import {
 
 import AlertsPanel from './components/AlertsPanel';
 import CustomizePanel from './components/CustomizePanel';
+import { EmptyState } from '@/components/feedback';
 
-// 图表懒加载
+// 图表懒加载：骨架屏占位，避免加载完成后页面跳动
 const chartLoading = () => (
-  <div className="flex min-h-[300px] items-center justify-center rounded-lg border bg-white text-sm text-muted-foreground">
-    图表加载中…
+  <div className="flex min-h-[300px] flex-col justify-center gap-4 rounded-lg border bg-card p-4">
+    <Skeleton className="h-4 w-1/4" />
+    <Skeleton className="h-full min-h-[220px] w-full" />
   </div>
 );
 
@@ -53,7 +58,7 @@ const MarketPricePanel = dynamic(() => import('./components/MarketPricePanel'), 
 
 const SparkCard = dynamic(
   () => import('./components/InlineCharts').then((m) => ({ default: m.SparkCard })),
-  { ssr: false, loading: () => <div className="h-[110px] rounded-lg border bg-white" /> },
+  { ssr: false, loading: () => <Skeleton className="h-[110px] rounded-lg" /> },
 );
 const MarketOverviewChart = dynamic(
   () => import('./components/InlineCharts').then((m) => ({ default: m.MarketOverviewChart })),
@@ -63,7 +68,9 @@ const MarketOverviewChart = dynamic(
 /* ── Types ── */
 type TimeRange = 'today' | 'week' | 'month';
 
-/* ── Mock data generators ── */
+/* ── 数据占位（真实数据待市场行情/预警/待办后端接入后填充） ──
+ * P0-F3：原硬编码 Mock（市场概览/预警待办/KPI 涨跌幅）已移除，
+ * 改为空数据 + 空状态展示，避免假数据与真实 KPI 混排误导决策。 */
 interface MarketOverviewRow {
   name: string;
   volume: number;
@@ -71,72 +78,35 @@ interface MarketOverviewRow {
   fill: string;
 }
 
-function useMarketOverviewData(range: TimeRange): MarketOverviewRow[] {
-  return useMemo(() => {
-    const base: Record<TimeRange, MarketOverviewRow[]> = {
-      today: [
-        { name: '日前', volume: 1200, avgPrice: 425.3, fill: '#6366f1' },
-        { name: '实时', volume: 860, avgPrice: 398.7, fill: '#3b82f6' },
-        { name: '中长期', volume: 2400, avgPrice: 410.0, fill: '#10b981' },
-      ],
-      week: [
-        { name: '日前', volume: 8400, avgPrice: 418.5, fill: '#6366f1' },
-        { name: '实时', volume: 6020, avgPrice: 392.1, fill: '#3b82f6' },
-        { name: '中长期', volume: 16800, avgPrice: 406.8, fill: '#10b981' },
-      ],
-      month: [
-        { name: '日前', volume: 36000, avgPrice: 421.2, fill: '#6366f1' },
-        { name: '实时', volume: 25800, avgPrice: 395.4, fill: '#3b82f6' },
-        { name: '中长期', volume: 72000, avgPrice: 408.5, fill: '#10b981' },
-      ],
-    };
-    return base[range];
-  }, [range]);
+function useMarketOverviewData(_range: TimeRange): MarketOverviewRow[] {
+  // WP1.5：接全市场购电均价口径（market_avg_price + 本公司当月电量，最近 6 个月）
+  const { data } = useQuery({
+    queryKey: ['dashboard-market-overview'],
+    queryFn: async () => {
+      const res = await apiClient.get('/api/v1/dashboard/market-overview');
+      return res.data.items as { month: string; market_avg: number; own_energy_mwh: number }[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  return (data ?? [])
+    .slice()
+    .reverse()
+    .map((it) => ({
+      name: it.month,
+      volume: Number(it.own_energy_mwh),
+      avgPrice: Number(it.market_avg),
+      fill: CHART_SERIES[0],
+    }));
 }
 
 function useTodoAlerts() {
-  return useMemo(
-    () => [
-      { id: 'a1', type: 'alert' as const, level: 'critical', message: '用户A-001偏差率超过15%，请及时处理', time: '10 分钟前' },
-      { id: 'a2', type: 'alert' as const, level: 'warning', message: '日前市场出清价异常波动，偏离均值 2σ', time: '30 分钟前' },
-      { id: 't1', type: 'todo' as const, level: 'info', message: '合同 HT-2024-0089 即将到期，需安排续约沟通', time: '1 小时前' },
-      { id: 't2', type: 'todo' as const, level: 'info', message: '客户"华东新材料"月度结算对账待确认', time: '2 小时前' },
-      { id: 'a3', type: 'alert' as const, level: 'warning', message: '储能电站 SOC 低于 20%，影响调频策略执行', time: '3 小时前' },
-    ],
-    [],
-  );
+  // 真实预警/待办待后端接入
+  return [];
 }
 
-function useKpiDeltas(range: TimeRange) {
-  return useMemo(() => {
-    const base: Record<TimeRange, Record<string, { value: number; direction: 'up' | 'down' }>> = {
-      today: {
-        customer_count: { value: 2.1, direction: 'up' },
-        active_contracts: { value: 1.5, direction: 'up' },
-        active_packages: { value: 0, direction: 'up' },
-        pending_alerts: { value: 12.3, direction: 'up' },
-        active_stations: { value: 0, direction: 'up' },
-        latest_settlement_fee: { value: 3.2, direction: 'up' },
-      },
-      week: {
-        customer_count: { value: 5.4, direction: 'up' },
-        active_contracts: { value: 3.1, direction: 'up' },
-        active_packages: { value: 2.0, direction: 'up' },
-        pending_alerts: { value: 8.7, direction: 'down' },
-        active_stations: { value: 0, direction: 'up' },
-        latest_settlement_fee: { value: 4.8, direction: 'up' },
-      },
-      month: {
-        customer_count: { value: 12.6, direction: 'up' },
-        active_contracts: { value: 8.3, direction: 'up' },
-        active_packages: { value: 5.0, direction: 'up' },
-        pending_alerts: { value: 15.2, direction: 'down' },
-        active_stations: { value: 10.0, direction: 'up' },
-        latest_settlement_fee: { value: 7.5, direction: 'up' },
-      },
-    };
-    return base[range];
-  }, [range]);
+function useKpiDeltas(_range: TimeRange): Record<string, { value: number; direction: 'up' | 'down' }> {
+  // KPI 环比涨跌幅待后端接入；返回空对象，KpiCard 不渲染涨跌标识
+  return {};
 }
 
 /* ── KPI Card ── */
@@ -162,7 +132,7 @@ function KpiCard({
     : delta?.direction === 'up';
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border bg-white px-4 py-3 shadow-sm">
+    <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 shadow-sm">
       <div
         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
         style={{ backgroundColor: color ? `${color}15` : undefined }}
@@ -172,11 +142,13 @@ function KpiCard({
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs text-muted-foreground">{label}</p>
         <div className="flex items-center gap-1.5">
-          <p className="text-lg font-bold leading-tight">{value}</p>
+          <p className="text-lg font-bold tabular-nums leading-tight">{value}</p>
           {delta && delta.value > 0 && (
             <div
-              className={`flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-semibold ${
-                isPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+              className={`flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums ${
+                isPositive
+                  ? 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400'
+                  : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
               }`}
             >
               {delta.direction === 'up' ? (
@@ -205,6 +177,9 @@ function TimelinePanel({ items }: { items: { id: string; type: 'alert' | 'todo';
         </CardTitle>
       </CardHeader>
       <CardContent className="max-h-72 overflow-y-auto">
+        {items.length === 0 ? (
+          <EmptyState compact className="py-8" title="暂无待办与预警" />
+        ) : (
         <div className="relative space-y-0">
           <div className="absolute left-[11px] top-2 bottom-2 w-px bg-border" />
           {items.map((item) => {
@@ -233,6 +208,7 @@ function TimelinePanel({ items }: { items: { id: string; type: 'alert' | 'todo';
             );
           })}
         </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -320,7 +296,13 @@ export default function DashboardPage() {
   const renderWidget = (id: string) => {
     switch (id) {
       case 'market_overview':
-        return <MarketOverviewChart data={marketData} />;
+        return marketData.length > 0 ? (
+          <MarketOverviewChart data={marketData} />
+        ) : (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            市场行情汇总待接入（全市场购电均价口径开发中）
+          </p>
+        );
       case 'timeline':
         return <TimelinePanel items={todoAlerts} />;
       case 'settlement_panel':
@@ -373,12 +355,12 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold">仪表盘</h1>
           <p className="text-sm text-muted-foreground">
-            OpenPTS · 开放式电力交易系统 — 核心业务数据概览
+            电力交易信息系统 — 核心业务数据概览
           </p>
         </div>
         <div className="flex items-center gap-2">
           {/* Time range selector */}
-          <div className="flex rounded-lg border bg-white p-0.5 shadow-sm">
+          <div className="flex rounded-lg border bg-card p-0.5 shadow-sm">
             {(['today', 'week', 'month'] as const).map((r) => (
               <Button
                 key={r}

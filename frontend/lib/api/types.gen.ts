@@ -465,6 +465,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/retail/contracts/{id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 生成合同文档（WP6.2：自包含 HTML，浏览器打印即 PDF；替代 501 占位）
+         * @description 中文零依赖的自包含 HTML（内联样式 + 打印 CSS + 签章位），浏览器「打印→存为 PDF」
+         *     即正式文件；有 MinIO 时自动归档为合同附件（contracts/{id}/contract_{id}.html）。
+         *     服务端 Chromium 渲染真 PDF 为后续增强（format=pdf）。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 文档（text/html 或归档后附件信息） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 合同不存在 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/retail/contracts": {
         parameters: {
             query?: never;
@@ -492,7 +540,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** 新建合同（retail_management:write） */
+        /** 新建合同（WP6.1：默认走审批，通过后自动落库；submit_approval=false 直建） */
         post: {
             parameters: {
                 query?: never;
@@ -502,8 +550,2113 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description 已直接创建 */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 已提交审批 */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/load-data/calibrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 校准台账（月份过滤） */
+        get: {
+            parameters: {
+                query?: {
+                    month?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 台账列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /**
+         * 负荷校准计算并保存预览（WP6.4，恢复被 YAGNI 删除的校准）
+         * @description 表计侧=raw_meter_data 逐点×倍率/4 聚合；系统侧=user_load_data 合计；
+         *     系数=meter/system。任一侧无数据返回 400 引导先导入（不臆造）。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        customer_id: string;
+                        /** @description YYYY-MM */
+                        month: string;
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 预览已保存（status=preview） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 数据缺失/参数错误 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/load-data/calibrations/{id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 应用校准（该月系统侧曲线/合计按系数缩放；重复应用拒绝） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已应用 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 不存在或已应用 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/load-data/calibrations/{id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 作废校准（已缩放数据不自动回滚，重导可恢复） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已作废 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/grid/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 电网模型列表（WP3.6） */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 模型列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** 创建/更新电网模型（(org,name) 幂等；替代前端写死的玩具网络） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        /**
+                         * @default pandapower
+                         * @enum {string}
+                         */
+                        model_type?: "pandapower" | "pgm" | "pypsa";
+                        /** @description 拓扑配置（节点/线路/负荷/机组 JSON） */
+                        config: Record<string, never>;
+                        description?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 已保存 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 参数错误/未选省份 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/grid/models/{name}/powerflow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 以保存的模型跑潮流（pandapower） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 潮流结果透传 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 模型不存在 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 算法服务不可达 */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/grid/models/{name}/state-estimation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** PGM 状态估计（WP3.6：自死代码激活） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        measurements?: Record<string, never>;
+                    };
+                };
+            };
+            responses: {
+                /** @description 状态估计结果（节点电压） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/grid/models/{name}/short-circuit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** PGM 短路计算（WP3.6：自死代码激活） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        faults: Record<string, never>[];
+                    };
+                };
+            };
+            responses: {
+                /** @description 短路计算结果 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rpa/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 注册/更新 RPA job（WP3.5） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        description?: string;
+                        /** @description 计划描述 */
+                        schedule?: string;
+                        /** @enum {string} */
+                        action?: "declaration_export" | "external";
+                    };
+                };
+            };
+            responses: {
+                /** @description 已注册 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 参数错误 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rpa/jobs/{name}/trigger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 手动触发 RPA job（WP3.5）
+         * @description declaration_export（内建动作）：扫描 submitted 申报单并导出 xlsx 报送文件，同步落 run；
+         *     external：创建 running run，由外挂执行器经 POST /rpa/runs 上报结果。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description run 已创建/已完成 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description job 不存在 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rpa/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * RPA run 结果上报（WP3.5，API Key 鉴权，外挂执行器通道）
+         * @description Authorization: Bearer ptis_xxx；status success/failed，重复收口拒绝。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        run_id: string;
+                        /** @enum {string} */
+                        status: "success" | "failed";
+                        output_files?: number;
+                        output_bytes?: number;
+                        error?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description run 已收口 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description API Key 无效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description run 不存在或已收口 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rpa/jobs/{name}/next-task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** RPA 取活（WP3.5，API Key）——返回待执行任务（如待报送申报单） */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 任务清单（含 export_url） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description API Key 无效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/carbon/trades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 碳交易记录列表 */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 交易列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** 碳交易记录（WP5.5：买/卖，加权均价滚动持仓） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date */
+                        trade_date: string;
+                        /** @enum {string} */
+                        product: "CEA" | "CCER";
+                        /** @enum {string} */
+                        side: "buy" | "sell";
+                        /** @description 吨 */
+                        quantity: number;
+                        /** @description 元/吨（参考 carbon_quotes 行情真值） */
+                        price: number;
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 已记录（持仓已滚动） */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 参数错误/未选省份 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/carbon/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 碳持仓台账（CEA/CCER，加权均价；卖超转 short 缺口） */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 持仓列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/carbon/compliance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 履约总览（配额—已清缴—缺口—可用持仓自动计算） */
+        get: {
+            parameters: {
+                query?: {
+                    year?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 年度履约行列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        /** 录入年度应清缴配额（WP5.5） */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        compliance_year: number;
+                        /** @description 应清缴配额 吨 */
+                        quota_tons: number;
+                        /** Format: date */
+                        deadline?: string;
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 已保存 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/carbon/compliance/surrender": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 履约清缴（扣 CEA 持仓；pending→partial→cleared；超额拒绝） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        compliance_year: number;
+                        /** @description 本次清缴 吨 */
+                        tons: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description 已清缴 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 持仓不足/参数错误 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/green-power/certificates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 绿证台账（状态过滤） */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "applied" | "issued" | "redeemed" | "void";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 台账列表（含核销客户名） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** 绿证申领（WP5.4：cert_no 幂等，可关联绿电成交） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description 绿证编号 */
+                        cert_no: string;
+                        /** @description 对应电量（1 证=1MWh 口径由调用方换算） */
+                        energy_mwh: number;
+                        /** Format: uuid */
+                        source_trade_id?: string;
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 已申领（status=applied） */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 参数错误/未选省份 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/green-power/certificates/{id}/{action}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 绿证状态流转（WP5.4：issue 核发 / redeem 核销 / void 作废）
+         * @description redeem 需 body.customer_id（核销给哪个客户）；issued→redeemed、applied/issued→void。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    action: "issue" | "redeem" | "void";
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        customer_id?: string;
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 已流转 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 状态不允许/缺客户 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/green-power/premium-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 客户绿电溢价汇总（WP5.4 结算联动：Σ premium×energy 按客户） */
+        get: {
+            parameters: {
+                query?: {
+                    month?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 客户×电量×溢价合计 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vpp/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** VPP 资源创建/更新（WP5.3：名称唯一，可关联客户/储能站） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        resource_name: string;
+                        /** @description storage/demand_response/pv/ev_charger */
+                        resource_type?: string;
+                        /** @description 可调容量 MW */
+                        capacity_mw: number;
+                        status?: string;
+                        location?: string;
+                        /**
+                         * Format: uuid
+                         * @description 关联客户（聚合曲线数据源）
+                         */
+                        customer_id?: string;
+                        /** Format: uuid */
+                        storage_station_id?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 已保存 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 参数错误/未选省份 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vpp/aggregate-curve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** VPP 聚合曲线（WP5.3：Σ 关联客户 curve_96，kW→MW） */
+        get: {
+            parameters: {
+                query?: {
+                    date?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 96 点聚合曲线（无关联数据返回空数组与 empty_reason） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vpp/dispatch-invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 邀约列表（含响应留痕） */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** 创建 VPP 调度邀约（WP5.3） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        resource_id: string;
+                        /** Format: date */
+                        dispatch_date: string;
+                        /** @description peak_shaving/valley_fill */
+                        dispatch_type?: string;
+                        /** @description 邀约量 MW */
+                        invited_mw: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description 邀约已创建（status=invited） */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vpp/dispatch-invites/{id}/respond": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 响应邀约（量/时长/响应速度/收益落库，status=completed） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        dispatched_mw: number;
+                        duration_min: number;
+                        response_time_sec?: number;
+                        revenue?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description 已记录 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 邀约不存在或已响应 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vpp/monthly-revenue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** VPP 近 N 月邀约收益汇总（前端趋势真数据源） */
+        get: {
+            parameters: {
+                query?: {
+                    months?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 月份×收益列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/freq/performance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 调频考核指标列表（WP5.2：雷达图真数据源） */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 指标列表（五项评分 + 里程） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/freq/performance/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 调频考核指标导入（WP5.2，CSV：日期,类型,响应,精度,持续,延迟,容量,里程）
+         * @description dry_run 默认 true（逐行校验 0-100 评分/AGC-AVC 类型/日期格式）。
+         */
+        post: {
+            parameters: {
+                query?: {
+                    dry_run?: "true" | "false";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        file?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 预览/导入结果 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 文件缺失/未选省份 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/freq/clearing/recalculate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 调频清算参数化重算（WP5.2，替换 rand 造数）
+         * @description 按考核指标（里程/容量评分）与规则参数（freq_mileage_price /
+         *     freq_capacity_comp_coef，闽/皖规则表可调）重算某日清算：
+         *     revenue = 里程×里程价 + 容量评分/100×系数×里程×里程价。
+         *     无该日考核数据返回 400 引导先导入。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date */
+                        date: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 重算结果（含所用参数） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 无考核数据/参数错误 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/stations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 创建储能站点（WP5.1：站点 CRUD，此前仅 List+demo） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        /** @description 容量 MWh */
+                        capacity_mwh: number;
+                        /** @description 最大功率 MW */
+                        max_power_mw: number;
+                        location?: string;
+                        /** @description active/maintenance/offline */
+                        status?: string;
+                    };
+                };
+            };
+            responses: {
                 /** @description 已创建 */
                 201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 参数错误/未选省份 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/stations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 更新储能站点（部分字段可选） */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已更新 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 站点不存在 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        /** 删除储能站点（日运营记录级联删除） */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已删除 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/schedule/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 生成储能调度计划（WP5.1：日前价 96 点 + LP 求解 → storage_schedules）
+         * @description 取 schedule_date 当日已导入日前价（48→96 点，dt=0.25h）+ 站点容量/功率，
+         *     调 linopy/HiGHS LP 求解充放电计划（SOC 动态/容量/期末不净耗电约束），
+         *     落 storage_schedules 96 行（同站同日覆盖）。无价格数据返回 400 引导导入。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        station_id: string;
+                        /** Format: date */
+                        schedule_date: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 计划已生成（periods/profit/method/optimization_id） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 无价格数据/参数错误 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description LP 服务不可达 */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询储能调度计划（激活 storage_schedules 死表） */
+        get: {
+            parameters: {
+                query?: {
+                    station_id?: string;
+                    date?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 96 点计划行列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/declarations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 申报列表（WP3.4：日前/滚动/储能申报闭环） */
+        get: {
+            parameters: {
+                query?: {
+                    type?: "day_ahead" | "rolling" | "storage";
+                    start?: string;
+                    end?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 申报列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/declarations/{type}/{date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 保存申报草稿（同类型同日覆盖；已确认终态拒绝） */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    type: "day_ahead" | "rolling" | "storage";
+                    date: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        periods: {
+                            period: number;
+                            volume_mwh: number;
+                            /** @description 元/MWh（可选） */
+                            price?: number;
+                        }[];
+                        /** @description manual / forecast_suggest */
+                        source?: string;
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 已保存草稿 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 参数错误/终态拒绝/未选省份 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/declarations/suggest/day-ahead/{date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 申报建议曲线（系统聚合负荷预测 96 点 → 逐时段 MWh；无预测 400 引导先跑预测） */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    date: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description periods + 总量 + 预测来源 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 无预测数据 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/declarations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 申报详情 */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 申报单 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 不存在 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/declarations/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交申报（draft → submitted） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已提交 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 状态不允许 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/declarations/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 确认申报（submitted → confirmed，终态） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已确认 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 状态不允许 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/declarations/{id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 作废申报（draft/submitted → void） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已作废 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 状态不允许 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/declarations/{id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 申报报送单导出（xlsx/csv 量价格式；平台直连为后续 adapter） */
+        get: {
+            parameters: {
+                query?: {
+                    format?: "xlsx" | "csv";
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 报送单文件流 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trade/bidding/backtest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 竞价策略回测（WP3.3，真实日前价历史 → 逐日模拟盈亏/敏感性/推荐）
+         * @description 策略模型：日申报量 + 报价上限 cap + 基准采购价（缺省=历史均价）。
+         *     逐日：日均出清价 ≤ cap 成交（盈亏=vol×(bench−avg)），否则按基准价补购（盈亏 0）。
+         *     响应含三面板数据：backtest（daily+summary）、sensitivity（cap ±10%/±20% 档）、
+         *     recommendation（累计盈亏最高档）。日前价历史 <7 天返回 400 引导导入。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /**
+                         * @description 历史窗口天数
+                         * @default 60
+                         */
+                        days?: number;
+                        /** @description 日申报量 MWh */
+                        volume_mwh_per_day: number;
+                        /** @description 报价上限 元/MWh */
+                        price_cap: number;
+                        /** @description 基准采购价（缺省历史均价） */
+                        benchmark_price?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description backtest + sensitivity + recommendation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 参数错误或日前价历史不足 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contract-price/daily-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 合同电价日汇总（WP2.3，自空态 stub 实现真逻辑） */
+        get: {
+            parameters: {
+                query?: {
+                    date?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description kpis（总量/加权均价/区间）+ type_summary（分套餐明细） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contract-price-trend/price-trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 合同电价日趋势（WP2.3） */
+        get: {
+            parameters: {
+                query?: {
+                    start_date?: string;
+                    end_date?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description daily_trends 序列（period_48_trends 暂无数据源返回空） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/load/medium-forecast/compute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 生成中长期负荷预测（WP2.3，真实月度电量输入）
+         * @description 历史 ≥13 月：同比 ×(1+近3月同比增速均值)；6~12 月：近 6 月均值外推（置信低）；
+         *     <6 月：400 引导先导入表计/负荷数据（不造数）。结果落 medium_load_forecast。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** @default 6 */
+                        months?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description 逐月预测与方法标注 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 历史月度电量不足 */
+                400: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -542,6 +2695,167 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/price/forecast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 日前价格预测（WP2.2 统一出口：默认 LEAR，相似日为回退/显式选择）
+         * @description body 可传 model：lear（默认）或 similar。lear 失败（无历史/算法不可达）时
+         *     回退相似日并在响应标注 model=similar_day_fallback 与 fallback_reason；
+         *     无历史数据直接 400。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date */
+                        target_date: string;
+                        /**
+                         * @default lear
+                         * @enum {string}
+                         */
+                        model?: "lear" | "similar";
+                    };
+                };
+            };
+            responses: {
+                /** @description 预测结果（model/fallback_reason/forecast） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 目标日格式错误或无历史价格数据 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/price/forecast/lear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * LEAR 日前电价预测（LASSO 自回归 + 外生变量 + 落库）
+         * @description 取最近 60 天日前价历史 + 系统负荷外生变量 → 调 algo LEAR → 落 price_forecast_results → 返回。
+         *     算法原理：Lago et al. Applied Energy 2021, 293:116983。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: date
+                         * @description 目标日 YYYY-MM-DD
+                         */
+                        target_date: string;
+                        /**
+                         * @description 是否取系统负荷作外生变量
+                         * @default true
+                         */
+                        use_exogenous?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description LEAR 预测结果 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            target_date?: string;
+                            history_days?: number;
+                            exogenous_days?: number;
+                            /** Format: uuid */
+                            forecast_id?: string;
+                            forecast?: components["schemas"]["PriceForecast"];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/price/forecast/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询某目标日的所有预测版本（含准确率，目标日已过会懒回填） */
+        get: {
+            parameters: {
+                query: {
+                    target_date: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 预测版本列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            target_date?: string;
+                            items?: components["schemas"]["PriceForecastRecord"][];
+                        };
+                    };
                 };
             };
         };
@@ -605,6 +2919,370 @@ export interface paths {
             requestBody?: never;
             responses: {
                 /** @description 月度结算 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/import/meter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 表计数据导入（营销系统/交易中心导出 CSV/XLSX → raw_meter_data，WP0.3）
+         * @description multipart/form-data，字段 file。dry_run 默认 true（先预览再提交）。
+         *     版式（首行表头）：客户（名称或 UUID）、电表编号、日期、倍率（可选默认 1）、曲线。
+         *     曲线三形态自动识别：逗号串 96/48 点（48 自动 ×2 升 96）、展开 96/48 列、
+         *     单个日总电量 kWh（均匀铺 96 点，响应标 estimated）。
+         *     正式导入后自动按 (customer, date) 聚合（Σ 表计曲线×倍率）写
+         *     user_load_data + unified_load_curve（method='meter_sum'）。幂等：同 (表号,日期) 覆盖。
+         */
+        post: {
+            parameters: {
+                query?: {
+                    dry_run?: "true" | "false";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        file?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 预览/导入结果（rows 逐行校验、inserted、aggregated） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 文件缺失/格式错误/未选省份 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/load/aggregate-meter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 手动触发表计负荷聚合作业（raw → user_load_data + unified_load_curve） */
+        post: {
+            parameters: {
+                query?: {
+                    start?: string;
+                    end?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 聚合统计（aggregated/skipped） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 日期参数错误 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboard/market-overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 市场交易概览（最近 N 个月全市场均价 vs 本公司电量，WP1.5）
+         * @description 任何已登录用户可访问。总部「全部省」口径：均价按月取各省均值、电量汇总。
+         */
+        get: {
+            parameters: {
+                query?: {
+                    months?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 月份/市场均价(元/MWh)/本公司电量(MWh) 列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/price/import-day-ahead": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 现货日前价导入（交易中心导出 CSV/XLSX → day_ahead_spot_price）
+         * @description multipart/form-data，字段 file。dry_run 默认 true（先预览再提交，false 正式入库）。
+         *     版式（首行表头）：长格式 日期/时段(1-48 或 1-96)/价格(元/MWh)；
+         *     宽格式 日期 + 48 或 96 个时段价格列（96 点自动两两均值降 48）。
+         *     限价区间按活跃省规则表校验（闽 元/kWh×1000、赣 元/MWh，其余兜底 [-1000,5000]）。
+         *     正式导入后自动重算 spot_market_daily 日聚合。写操作须选定具体省份。
+         */
+        post: {
+            parameters: {
+                query?: {
+                    dry_run?: "true" | "false";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        file?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 导入预览/结果（format/rows 按日汇总/valid_days/points/agg_refreshed） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description 文件缺失、格式错误或未选省份 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/load/forecast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 短期负荷预测（取客户历史 → 相似日加权 → 96 点曲线）
+         * @description 可选持久化（注入 forecastRepo 时落 short_term_load_forecast 表）。
+         *     返回 forecast/lower/upper/total/peak/valley + method。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: uuid
+                         * @description 客户ID（AGGREGATE=系统聚合）
+                         */
+                        customer_id: string;
+                        /** Format: date */
+                        target_date: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 预测结果 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            customer_id?: string;
+                            target_date?: string;
+                            forecast?: components["schemas"]["LoadForecastCurve"];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/load/forecast/data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查短期负荷预测数据（目标日已过时懒回填 actual + 算准确率） */
+        get: {
+            parameters: {
+                query: {
+                    customer_id: string;
+                    target_date: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 预测数据（含 actual_values + accuracy） */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoadForecastData"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/load/forecast/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 列某客户某目标日的预测版本 */
+        get: {
+            parameters: {
+                query: {
+                    customer_id: string;
+                    target_date: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 版本列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/load/forecast/performance-overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 负荷预测性能总览（按客户聚合准确率） */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 性能总览 */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -830,7 +3508,7 @@ export interface components {
         LoginRequest: {
             /** @example admin */
             username: string;
-            /** @example your_password */
+            /** @example admin123 */
             password: string;
         };
         LoginResponse: {
@@ -840,20 +3518,20 @@ export interface components {
             username: string;
         };
         DashboardSummary: {
-            customer_count?: number;
-            active_contracts?: number;
-            active_packages?: number;
-            pending_alerts?: number;
-            critical_alerts?: number;
-            active_stations?: number;
-            storage_30d_revenue?: number;
-            freq_7d_revenue?: number;
+            customer_count: number;
+            active_contracts: number;
+            active_packages: number;
+            pending_alerts: number;
+            critical_alerts: number;
+            active_stations: number;
+            storage_30d_revenue: number;
+            freq_7d_revenue: number;
             latest_settlement_fee?: number | null;
         };
         DailySeriesPoint: {
             /** Format: date-time */
-            date?: string;
-            value?: number;
+            date: string;
+            value: number;
         };
         Customer: {
             /** Format: uuid */
@@ -884,6 +3562,11 @@ export interface components {
              * @description 归属省份（多租户）
              */
             org_id?: string | null;
+            /**
+             * Format: uuid
+             * @description 所属代理商 FK（Phase 2，取代 source 名字弱关联）
+             */
+            agent_id?: string | null;
         };
         ScheduledJob: {
             /** Format: uuid */
@@ -893,6 +3576,10 @@ export interface components {
             cron_expr: string;
             handler: string;
             enabled: boolean;
+            /** @description 失败最大重试次数（0=不重试） */
+            max_retries: number;
+            /** @description 是否仅在交易日（跳过周末+法定假日）执行 */
+            trade_day_only: boolean;
             /** Format: date-time */
             last_run_at?: string | null;
             last_status?: string | null;
@@ -922,6 +3609,176 @@ export interface components {
             /** Format: date-time */
             created_at: string;
         };
+        SettlementDaily: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date */
+            operating_date: string;
+            version: string;
+            contract_fee?: number | null;
+            day_ahead_fee?: number | null;
+            real_time_fee?: number | null;
+            total_energy_fee?: number | null;
+            energy_avg_price?: number | null;
+            deviation_recovery_fee?: number | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        PeriodDetail: {
+            period: number;
+            volume_mwh: number;
+            price: number;
+            fee: number;
+        };
+        SettlementDetail: components["schemas"]["SettlementDaily"] & {
+            period_details: components["schemas"]["PeriodDetail"][];
+        };
+        CarbonQuote: {
+            id: number;
+            product: string;
+            /** Format: date */
+            trade_date: string;
+            open_price?: number | null;
+            high_price?: number | null;
+            low_price?: number | null;
+            close_price?: number | null;
+            volume?: number | null;
+            turnover?: number | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        CarbonProductSummary: {
+            product: string;
+            name: string;
+            unit: string;
+            /** Format: date */
+            latest_date?: string | null;
+            close?: number | null;
+            prev_close?: number | null;
+            change?: number | null;
+            change_pct?: number | null;
+            volume?: number | null;
+            high_52w?: number | null;
+            low_52w?: number | null;
+        };
+        PricingModel: {
+            code: string;
+            display_name: string;
+            package_type: string;
+            pricing_mode: string;
+            enabled: boolean;
+            sort_order: number;
+        };
+        RetailPackage: {
+            /** Format: uuid */
+            id: string;
+            package_name: string;
+            package_type: string;
+            model_code?: string | null;
+            is_green_power: boolean;
+            status: string;
+            description?: string | null;
+            pricing_config?: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        RetailContract: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            customer_id: string;
+            customer_name: string;
+            /** Format: uuid */
+            package_id: string;
+            package_name_snapshot: string;
+            purchasing_energy_mwh: number;
+            green_power_ratio?: number | null;
+            purchase_start_month: string;
+            purchase_end_month: string;
+            status: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description 电价预测结果（48 点曲线 + 置信带 + 摘要） */
+        PriceForecast: {
+            /** @description 48 点预测价格（元/MWh） */
+            forecast?: number[];
+            /** @description 置信带下界 */
+            lower?: number[];
+            /** @description 置信带上界 */
+            upper?: number[];
+            /** @description 预测总量 */
+            total?: number;
+            /** @description 峰值预测 */
+            peak?: number;
+            /** @description 谷值预测 */
+            valley?: number;
+            /** @description 算法标识（LEAR/相似日加权平均） */
+            method?: string;
+            /** @description 训练样本天数 */
+            sample_days?: number;
+            /** @description 目标日星期（0=周一） */
+            target_weekday?: number;
+        };
+        /** @description 价格预测历史记录（含准确率，若已回填） */
+        PriceForecastRecord: {
+            /** Format: uuid */
+            forecast_id?: string;
+            /** Format: date */
+            forecast_date?: string;
+            /** Format: date */
+            target_date?: string;
+            price_da_forecast?: number[];
+            forecast_method?: string;
+            accuracy_metrics?: {
+                /** @description 加权平均百分比误差（0~1） */
+                wmape?: number;
+                mae?: number;
+                rmse?: number;
+            } | null;
+            operator?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        /** @description 负荷预测曲线（96 点 + 置信带 + 摘要） */
+        LoadForecastCurve: {
+            /** @description 96 点预测负荷（MWh） */
+            forecast?: number[];
+            lower?: number[];
+            upper?: number[];
+            total?: number;
+            peak?: number;
+            valley?: number;
+            /** @description 算法标识（相似日加权平均/LEAR） */
+            method?: string;
+            sample_days?: number;
+        };
+        /** @description 负荷预测数据（含 actual 回填 + 准确率） */
+        LoadForecastData: {
+            /** Format: uuid */
+            forecast_id?: string;
+            customer_id?: string;
+            target_date?: string;
+            /** @description 96 点预测值 */
+            values?: number[];
+            actual_values?: number[] | null;
+            confidence_lower?: number[] | null;
+            confidence_upper?: number[] | null;
+            pred_sum?: number | null;
+            method?: string;
+            accuracy?: {
+                /** @description 准确率（1-wmape，0~1） */
+                wmape_accuracy?: number;
+                mae?: number;
+                rmse?: number;
+            } | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -937,5 +3794,17 @@ export type SchemaDailySeriesPoint = components['schemas']['DailySeriesPoint'];
 export type SchemaCustomer = components['schemas']['Customer'];
 export type SchemaScheduledJob = components['schemas']['ScheduledJob'];
 export type SchemaAuditLog = components['schemas']['AuditLog'];
+export type SchemaSettlementDaily = components['schemas']['SettlementDaily'];
+export type SchemaPeriodDetail = components['schemas']['PeriodDetail'];
+export type SchemaSettlementDetail = components['schemas']['SettlementDetail'];
+export type SchemaCarbonQuote = components['schemas']['CarbonQuote'];
+export type SchemaCarbonProductSummary = components['schemas']['CarbonProductSummary'];
+export type SchemaPricingModel = components['schemas']['PricingModel'];
+export type SchemaRetailPackage = components['schemas']['RetailPackage'];
+export type SchemaRetailContract = components['schemas']['RetailContract'];
+export type SchemaPriceForecast = components['schemas']['PriceForecast'];
+export type SchemaPriceForecastRecord = components['schemas']['PriceForecastRecord'];
+export type SchemaLoadForecastCurve = components['schemas']['LoadForecastCurve'];
+export type SchemaLoadForecastData = components['schemas']['LoadForecastData'];
 export type $defs = Record<string, never>;
 export type operations = Record<string, never>;

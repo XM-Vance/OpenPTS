@@ -1,13 +1,12 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { ChartLoading } from '@/components/feedback';
 
 const View = dynamic(() => import('./_view'), {
   ssr: false,
   loading: () => (
-    <div className="flex min-h-[60vh] items-center justify-center text-sm text-muted-foreground">
-      加载中…
-    </div>
+    <ChartLoading className="min-h-[60vh]" />
   ),
 });
 
